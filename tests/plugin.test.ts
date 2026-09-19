@@ -7,72 +7,9 @@
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { apply, ROUTE_CONNECTIONS, ROUTE_MODELS, ROUTE_QUOTA } from '../src/index.ts'
-import type { Disposable, HostContext, WebRouteLike } from '../src/host.ts'
-
-/** One captured response. */
-interface Captured {
-  status: number
-  headers: Record<string, string>
-  body: unknown
-}
-
-/** Services a case may mount; absent keys read as "not mounted". */
-interface Services {
-  settings?: { update(ns: string, patch: object): Promise<void> }
-  credentials?: { resolve(ref: string): Promise<{ value: string } | undefined> }
-  connection?: { requestRejection(request: { headers: object | undefined }): 401 | 403 | undefined }
-}
-
-/** Mount the plugin over a fake context and return its routes by path. */
-function mount(services: Services, config?: Record<string, unknown>): Map<string, WebRouteLike> {
-  const routes = new Map<string, WebRouteLike>()
-  const ctx = {
-    effect: (callback: () => Disposable | void): void => { callback() },
-    get: (name: string): unknown => (services as Record<string, unknown>)[name],
-    logger: { warn: (): void => {}, error: (): void => {} },
-    webServer: {
-      register: (route: WebRouteLike): Disposable => {
-        routes.set(route.path, route)
-        return () => {}
-      },
-    },
-  } as unknown as HostContext
-  apply(ctx, config ?? {})
-  assert.deepEqual([...routes.keys()].sort(), [ROUTE_CONNECTIONS, ROUTE_MODELS, ROUTE_QUOTA].sort())
-  return routes
-}
-
-/** Run one request through a route. */
-async function request(route: WebRouteLike, url: string, method = 'GET', headers: object = {}): Promise<Captured> {
-  const captured: Captured = { status: 0, headers: {}, body: undefined }
-  const res = {
-    statusCode: 0,
-    setHeader(name: string, value: string): void { captured.headers[name] = value },
-    end(body?: string): void {
-      captured.status = res.statusCode
-      captured.body = body === undefined ? undefined : JSON.parse(body)
-    },
-  }
-  await route.handler({ method, url, headers }, res)
-  return captured
-}
-
-/** One stubbed answer per pathname; a path this map lacks answers 404. */
-function stubFetch(bodies: Record<string, unknown>, calls: string[] = []): { calls: string[]; restore: () => void } {
-  const original = globalThis.fetch
-  globalThis.fetch = ((url: string | URL) => {
-    const target = String(url)
-    calls.push(target)
-    const body = bodies[new URL(target).pathname]
-    return Promise.resolve({
-      ok: body !== undefined,
-      status: body === undefined ? 404 : 200,
-      json: () => Promise.resolve(body ?? {}),
-    })
-  }) as unknown as typeof fetch
-  return { calls, restore: () => { globalThis.fetch = original } }
-}
+import { ROUTE_CONNECTIONS, ROUTE_MODELS, ROUTE_QUOTA } from '../src/index.ts'
+import type { WebRouteLike } from '../src/host.ts'
+import { mount, request, stubFetch, type Services } from './harness.ts'
 
 /** The catalog one case serves, shaped like the real `/api/models` body. */
 const CATALOG = {

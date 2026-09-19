@@ -1,6 +1,6 @@
 {
   "name": "dsh-omniroute",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
@@ -44,10 +44,5 @@
   },
   "peerDependencies": {
     "@deepseek-ai/schemastery": "*"
-  },
-  "peerDependenciesMeta": {
-    "@deepseek-ai/schemastery": {
-      "optional": true
-    }
   }
 }

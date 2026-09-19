@@ -106,9 +106,11 @@ export interface OmniRouteApi {
     connections(): Promise<readonly OmniRouteConnection[]>;
     /**
      * Read the quota of every connection that publishes one.
+     * @param listed - connections already read, so the caller does not make this
+     * client ask `/api/providers` a second time for the same reading.
      * @returns one entry per window, connections in listing order.
      */
-    quota(): Promise<readonly OmniRouteQuota[]>;
+    quota(listed?: readonly OmniRouteConnection[]): Promise<readonly OmniRouteQuota[]>;
 }
 /**
  * Parse a `GET /api/models` body.

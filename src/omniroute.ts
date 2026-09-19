@@ -27,6 +27,8 @@
  * @module dsh-omniroute/omniroute
  */
 
+import { numberOf, record, stringOf } from './util.ts'
+
 /** One model OmniRoute advertises. */
 export interface OmniRouteModel {
   /** Id a request names: the `fullModel` when the listing has one. */
@@ -111,27 +113,11 @@ export interface OmniRouteApi {
   connections(): Promise<readonly OmniRouteConnection[]>
   /**
    * Read the quota of every connection that publishes one.
+   * @param listed - connections already read, so the caller does not make this
+   * client ask `/api/providers` a second time for the same reading.
    * @returns one entry per window, connections in listing order.
    */
-  quota(): Promise<readonly OmniRouteQuota[]>
-}
-
-/** Narrow an unknown to an indexable object. */
-function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined
-}
-
-/** Read one field as a finite number, or `undefined`. */
-function numberOf(value: unknown): number | undefined {
-  const parsed = typeof value === 'string' && value.trim() !== '' ? Number(value) : value
-  return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : undefined
-}
-
-/** Read one field as a non-empty string, or `undefined`. */
-function stringOf(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined
+  quota(listed?: readonly OmniRouteConnection[]): Promise<readonly OmniRouteQuota[]>
 }
 
 /**
@@ -256,11 +242,11 @@ export function createOmniRouteApi(options: OmniRouteApiOptions): OmniRouteApi {
   return {
     models: async () => parseModels(await get('/api/models')),
     connections,
-    quota: async () => {
-      const listed = await connections()
+    quota: async (listed) => {
+      const all = listed ?? await connections()
       // A connection that is off, or hides its quota, is not asked at all; one
       // that fails to answer contributes no window rather than failing the read.
-      const asked = listed.filter(connection => connection.active && connection.quotaVisible)
+      const asked = all.filter(connection => connection.active && connection.quotaVisible)
       const answers = await Promise.all(asked.map(async (connection) => {
         try {
           return parseUsage(await get(`/api/usage/${encodeURIComponent(connection.id)}`), connection)

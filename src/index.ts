@@ -115,6 +115,25 @@ function connectionOf(ctx: HostContext): ConnectionLike | undefined {
 }
 
 /**
+ * Query parameters of a request target.
+ *
+ * Only the query matters here, so only the query is parsed: building a `URL`
+ * for every poll pays for an origin the routes never read.
+ * @param url - request target, path and query.
+ * @returns the decoded parameters.
+ */
+function searchParamsOf(url: string): URLSearchParams {
+  // The fragment is not part of the request target a `URL` would parse either,
+  // and a target whose `#` precedes its `?` must not have the fragment read as
+  // query text.
+  const hash = url.indexOf('#')
+  const target = hash < 0 ? url : url.slice(0, hash)
+  const start = target.indexOf('?')
+  if (start < 0) return new URLSearchParams()
+  return new URLSearchParams(target.slice(start + 1))
+}
+
+/**
  * Resolve the OmniRoute API key: the configured reference first, then the
  * launcher's own environment for that name.
  * @param ctx - host context.
@@ -199,8 +218,12 @@ export function apply(ctx: HostContext, config: Config = {}): void {
   const filtered = (models: readonly OmniRouteModel[], params: URLSearchParams): readonly OmniRouteModel[] => {
     const query = (params.get('q') ?? '').toLowerCase()
     const provider = params.get('provider')
+    const onlyAvailable = params.get('available') === '1'
+    // Nothing narrows the read: hand back the cached catalog rather than
+    // walking it once per request to build an identical copy.
+    if (query === '' && (provider === null || provider === '') && !onlyAvailable) return models
     return models.filter((model) => {
-      if (params.get('available') === '1' && !model.available) return false
+      if (onlyAvailable && !model.available) return false
       if (provider !== null && provider !== '' && model.provider !== provider) return false
       if (query === '') return true
       return model.id.toLowerCase().includes(query)
@@ -212,16 +235,23 @@ export function apply(ctx: HostContext, config: Config = {}): void {
   const modelsRoute = async (params: URLSearchParams, refresh: boolean): Promise<unknown> => {
     const api = await apiFor()
     if (api === undefined) throw new Error(`no OmniRoute API key is configured (${envName})`)
-    const models = await read('models', refresh, () => api.models())
-    const shown = filtered(models, params)
+    // The available count is a property of the reading, not of the request, so
+    // it is counted once per fetch and cached beside the catalog.
+    const catalog = await read('models', refresh, async () => {
+      const models = await api.models()
+      let available = 0
+      for (const model of models) if (model.available) available += 1
+      return { models, available }
+    })
+    const shown = filtered(catalog.models, params)
     const reply: Record<string, unknown> = {
       status: 'ok',
       provider: syncProvider,
       origin,
       fetchedAt: Date.now(),
       counts: {
-        total: models.length,
-        available: models.filter(model => model.available).length,
+        total: catalog.models.length,
+        available: catalog.available,
         shown: shown.length,
       },
       models: shown,
@@ -253,10 +283,10 @@ export function apply(ctx: HostContext, config: Config = {}): void {
   const quotaRoute = async (refresh: boolean): Promise<unknown> => {
     const api = await apiFor()
     if (api === undefined) throw new Error(`no OmniRoute API key is configured (${envName})`)
-    const [connections, windows] = await Promise.all([
-      read('connections', refresh, () => api.connections()),
-      read('quota', refresh, () => api.quota()),
-    ])
+    // The connections are read once and handed to the quota read: asking the
+    // client for them again would repeat `/api/providers` on every miss.
+    const connections = await read('connections', refresh, () => api.connections())
+    const windows = await read('quota', refresh, () => api.quota(connections))
     return {
       status: 'ok',
       origin,
@@ -281,9 +311,9 @@ export function apply(ctx: HostContext, config: Config = {}): void {
         sendJson(res, 405, { status: 'error', message: 'this route answers GET only' })
         return
       }
-      const target = new URL(String(req.url), 'http://localhost')
+      const params = searchParamsOf(String(req.url))
       try {
-        sendJson(res, 200, await run(target.searchParams, target.searchParams.get('refresh') === '1'))
+        sendJson(res, 200, await run(params, params.get('refresh') === '1'))
       } catch (error) {
         // A refusal never carries the key or the router's own body: the
         // message is this plugin's own, and the cause is shortened to one line.

@@ -13,22 +13,7 @@ import {
   parseModels,
   parseUsage,
 } from '../src/omniroute.ts'
-
-/** One stubbed answer per pathname; a path this map lacks answers 404. */
-function stubFetch(bodies: Record<string, unknown>, calls: string[] = []): { calls: string[]; restore: () => void } {
-  const original = globalThis.fetch
-  globalThis.fetch = ((url: string | URL) => {
-    const target = String(url)
-    calls.push(target)
-    const body = bodies[new URL(target).pathname]
-    return Promise.resolve({
-      ok: body !== undefined,
-      status: body === undefined ? 404 : 200,
-      json: () => Promise.resolve(body ?? {}),
-    })
-  }) as unknown as typeof fetch
-  return { calls, restore: () => { globalThis.fetch = original } }
-}
+import { stubFetch } from './harness.ts'
 
 test('the model catalog keeps the served id, name, availability and vision', () => {
   const models = parseModels({
