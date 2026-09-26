@@ -41,7 +41,7 @@ export declare const DEFAULT_API_KEY_ENV = "OMNIROUTE_API_KEY";
 export declare const DEFAULT_TIMEOUT_MS = 10000;
 /** Seconds one reading is served without asking OmniRoute again. */
 export declare const DEFAULT_CACHE_SECONDS = 30;
-/** Settings namespace of the provider route a model sync writes into. */
+/** Profile entry id of the provider route a model sync writes into. */
 export declare const DEFAULT_SYNC_NAMESPACE = "llm-pi-ai";
 /** Provider route a model sync writes into. */
 export declare const DEFAULT_SYNC_PROVIDER = "omniroute";
@@ -55,7 +55,7 @@ export interface Config {
     readonly timeoutMs?: number;
     /** Seconds a reading stays cached. `0` re-asks on every request. @default 30 */
     readonly cacheSeconds?: number;
-    /** Settings namespace `?sync=1` writes the model catalog into. @default llm-pi-ai */
+    /** Profile entry id `?sync=1` writes the model catalog into. @default llm-pi-ai */
     readonly syncNamespace?: string;
     /** Provider route `?sync=1` writes the model catalog into. @default omniroute */
     readonly syncProvider?: string;

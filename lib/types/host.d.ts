@@ -25,9 +25,9 @@ export interface CredentialsLike {
 /** The slice of the settings service this plugin writes through. */
 export interface SettingsLike {
     /**
-     * Merge a patch into one registered namespace's user layer.
-     * @param ns - the registered namespace to update.
-     * @param patch - plain-object patch over the user section.
+     * Merge a patch into one profile entry.
+     * @param ns - profile entry id (v0.1.7), not a settings namespace.
+     * @param patch - plain-object patch over that entry.
      * @returns when the write is persisted.
      */
     update(ns: string, patch: object): Promise<void>;

@@ -1,6 +1,6 @@
 {
   "name": "dsh-omniroute",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
@@ -17,6 +17,7 @@
       "default": "./lib/index.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -26,9 +27,11 @@
     "compatibility": {
       "dsh": ">=0.1.0-rc.8 <0.2.0"
     },
-    "displayName": "余额与额度监控（DSH Omniroute）"
+    "displayName": "\u4f59\u989d\u4e0e\u989d\u5ea6\u76d1\u63a7\uff08DSH Omniroute\uff09"
   },
   "files": [
+    "icon.svg",
+    "locale/*.json",
     "lib/**/*.js",
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
@@ -52,5 +55,6 @@
   },
   "peerDependencies": {
     "@deepseek-ai/schemastery": "*"
-  }
+  },
+  "icon": "./icon.svg"
 }

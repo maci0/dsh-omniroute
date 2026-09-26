@@ -66,7 +66,7 @@ export const DEFAULT_TIMEOUT_MS = 10_000
 /** Seconds one reading is served without asking OmniRoute again. */
 export const DEFAULT_CACHE_SECONDS = 30
 
-/** Settings namespace of the provider route a model sync writes into. */
+/** Profile entry id of the provider route a model sync writes into. */
 export const DEFAULT_SYNC_NAMESPACE = 'llm-pi-ai'
 
 /** Provider route a model sync writes into. */
@@ -82,7 +82,7 @@ export interface Config {
   readonly timeoutMs?: number
   /** Seconds a reading stays cached. `0` re-asks on every request. @default 30 */
   readonly cacheSeconds?: number
-  /** Settings namespace `?sync=1` writes the model catalog into. @default llm-pi-ai */
+  /** Profile entry id `?sync=1` writes the model catalog into. @default llm-pi-ai */
   readonly syncNamespace?: string
   /** Provider route `?sync=1` writes the model catalog into. @default omniroute */
   readonly syncProvider?: string
@@ -152,7 +152,7 @@ async function apiKeyOf(ctx: HostContext, envName: string): Promise<string | und
 /**
  * Copy the live catalog into a provider route's settings.
  * @param ctx - host context.
- * @param namespace - settings namespace to merge into.
+ * @param namespace - profile entry id to merge into.
  * @param provider - provider route to write models for.
  * @param models - the catalog to write, already filtered to what is servable.
  * @returns the count written.
