@@ -22,6 +22,7 @@
  * @module dsh-omniroute
  */
 
+import type { Volatile } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import {
   createOmniRouteApi,
@@ -72,27 +73,40 @@ export const DEFAULT_SYNC_NAMESPACE = 'llm-pi-ai'
 /** Provider route a model sync writes into. */
 export const DEFAULT_SYNC_PROVIDER = 'omniroute'
 
-/** Configuration accepted from this plugin's row in a profile patch. */
+/**
+ * Configuration this plugin's row resolves to, as `apply` receives it.
+ *
+ * Every field is `volatile()` — the settings document accepts writes only under
+ * a volatile node, and the Plugins page's OmniRoute card edits exactly these —
+ * so the loader hands live references and each is read per request. `baseURL`
+ * and `apiKeyEnv` decide where the plugin talks and as whom; the two sync
+ * fields name the row `?sync=1` writes a model catalog into.
+ */
 export interface Config {
   /** OmniRoute origin, with or without its `/v1` path. @default http://localhost:20128 */
-  readonly baseURL?: string
+  readonly baseURL: Volatile<string>
   /** Credential reference holding the OmniRoute API key. @default OMNIROUTE_API_KEY */
-  readonly apiKeyEnv?: string
+  readonly apiKeyEnv: Volatile<string>
   /** Per-request deadline in milliseconds. @default 10000 */
-  readonly timeoutMs?: number
+  readonly timeoutMs: Volatile<number>
   /** Seconds a reading stays cached. `0` re-asks on every request. @default 30 */
-  readonly cacheSeconds?: number
+  readonly cacheSeconds: Volatile<number>
   /** Profile entry id `?sync=1` writes the model catalog into. @default llm-pi-ai */
-  readonly syncNamespace?: string
+  readonly syncNamespace: Volatile<string>
   /** Provider route `?sync=1` writes the model catalog into. @default omniroute */
-  readonly syncProvider?: string
+  readonly syncProvider: Volatile<string>
 }
 
+/** Raw row values, as a profile patch states them and as direct callers pass them. */
+export type Options = { [K in keyof Config]?: Config[K] extends Volatile<infer T> ? T : Config[K] }
+
 /**
- * Row schema: what Cordis validates this plugin's `config` against, and where
- * each default lives.
+ * Field defaults and bounds with no volatility wrapper. {@link resolveRow}
+ * parses a plain row through this schema, so its output is plain values; the
+ * loader-facing {@link Config} below is the same shape with every field made
+ * `volatile()`. The pair is asserted equal in the suite.
  */
-export const Config: Schema<Config> = Schema.object({
+const ValueSchema = Schema.object({
   baseURL: Schema.string().default(DEFAULT_BASE_URL),
   apiKeyEnv: Schema.string().default(DEFAULT_API_KEY_ENV),
   timeoutMs: Schema.number().min(1).max(60_000).default(DEFAULT_TIMEOUT_MS),
@@ -100,6 +114,53 @@ export const Config: Schema<Config> = Schema.object({
   syncNamespace: Schema.string().default(DEFAULT_SYNC_NAMESPACE),
   syncProvider: Schema.string().default(DEFAULT_SYNC_PROVIDER),
 })
+
+/**
+ * Row schema as Cordis resolves it: what this plugin's `config` is validated
+ * against, and where each default lives. Every field is editable from the
+ * Plugins page, so every one is volatile.
+ */
+export const Config = Schema.object({
+  baseURL: Schema.string().default(DEFAULT_BASE_URL).volatile(),
+  apiKeyEnv: Schema.string().default(DEFAULT_API_KEY_ENV).volatile(),
+  timeoutMs: Schema.number().min(1).max(60_000).default(DEFAULT_TIMEOUT_MS).volatile(),
+  cacheSeconds: Schema.number().min(0).max(3_600).default(DEFAULT_CACHE_SECONDS).volatile(),
+  syncNamespace: Schema.string().default(DEFAULT_SYNC_NAMESPACE).volatile(),
+  syncProvider: Schema.string().default(DEFAULT_SYNC_PROVIDER).volatile(),
+})
+
+/**
+ * Read one configured field as a plain value.
+ *
+ * The loader hands a `volatile()` field a live reference; a direct caller (a
+ * test, another plugin composing this one) hands the value itself. Both are
+ * accepted, so one read path serves both.
+ * @param value - the configured value, live or plain.
+ * @returns the current plain value, or `undefined` when a reference holds none.
+ */
+function readLive<T>(value: T | Volatile<T> | undefined): T | undefined {
+  if (value !== null && typeof value === 'object' && typeof (value as Volatile<T>).get === 'function') {
+    // A scalar snapshot is the value; the generic cannot narrow that itself.
+    return (value as Volatile<T>).get() as T | undefined
+  }
+  return value as T | undefined
+}
+
+/**
+ * Turn a row — live references or plain values — into validated plain options.
+ * @param row - the configured row.
+ * @returns the resolved options, defaults filled by the schema.
+ */
+export function resolveRow(row: Config | Options = {}): Required<Options> {
+  return ValueSchema({
+    baseURL: readLive(row.baseURL),
+    apiKeyEnv: readLive(row.apiKeyEnv),
+    timeoutMs: readLive(row.timeoutMs),
+    cacheSeconds: readLive(row.cacheSeconds),
+    syncNamespace: readLive(row.syncNamespace),
+    syncProvider: readLive(row.syncProvider),
+  }) as Required<Options>
+}
 
 /** Write a JSON reply; readings are live facts and are never browser-cached. */
 function sendJson(res: ResponseLike, status: number, payload: unknown): void {
@@ -179,29 +240,44 @@ async function syncModels(
  * @param ctx - host context carrying the route carrier.
  * @param config - this plugin's row configuration.
  */
-export function apply(ctx: HostContext, config: Config = {}): void {
-  // The row schema fills every default (even for an omitted row), so the
-  // reads below are plain: the schema is the single source of each default.
-  const validated = Config(config) as Required<Config>
-  const origin = originOf(validated.baseURL, DEFAULT_BASE_URL)
-  const envName = validated.apiKeyEnv
-  const timeoutMs = validated.timeoutMs
-  const cacheSeconds = validated.cacheSeconds
-  const syncNamespace = validated.syncNamespace
-  const syncProvider = validated.syncProvider
+export function apply(ctx: HostContext, row: Config | Options = {}): void {
+  // Read the row at every use: each field is volatile, so a save from the
+  // Plugins card has to reach the next request, not a mount-time copy.
+  const live = (): Required<Options> => resolveRow(row)
+  live()
+  /**
+   * The origin the live `baseURL` names, derived once per distinct value.
+   *
+   * Deriving it per request is what makes an edit take effect; doing it more
+   * than once per distinct value is what the served-read cost guard forbids,
+   * because parsing an origin is not free and a settled row never changes.
+   */
+  let originKey: string | undefined
+  let originValue = ''
+  const liveOrigin = (): string => {
+    const { baseURL } = live()
+    if (baseURL !== originKey) {
+      originKey = baseURL
+      originValue = originOf(baseURL, DEFAULT_BASE_URL)
+    }
+    return originValue
+  }
   const cache = new Map<string, { at: number; value: unknown }>()
   const inflight = new Map<string, Promise<unknown>>()
 
   /** The client for one request, built after its credential resolved. */
   const apiFor = async (): Promise<OmniRouteApi | undefined> => {
-    const key = await apiKeyOf(ctx, envName)
-    return key === undefined ? undefined : createOmniRouteApi({ origin, key, timeoutMs })
+    const { apiKeyEnv, timeoutMs } = live()
+    const key = await apiKeyOf(ctx, apiKeyEnv)
+    return key === undefined
+      ? undefined
+      : createOmniRouteApi({ origin: liveOrigin(), key, timeoutMs })
   }
 
   /** Serve one cached read, keyed by route name. */
   const read = async <T>(key: string, refresh: boolean, load: () => Promise<T>): Promise<T> => {
     const hit = cache.get(key)
-    if (!refresh && hit !== undefined && Date.now() - hit.at < cacheSeconds * 1_000) return hit.value as T
+    if (!refresh && hit !== undefined && Date.now() - hit.at < live().cacheSeconds * 1_000) return hit.value as T
     const running = inflight.get(key)
     if (running !== undefined) return running as Promise<T>
     const pending = load().then((value) => {
@@ -233,8 +309,10 @@ export function apply(ctx: HostContext, config: Config = {}): void {
   }
 
   const modelsRoute = async (params: URLSearchParams, refresh: boolean): Promise<unknown> => {
+    const { apiKeyEnv, syncNamespace, syncProvider } = live()
+    const origin = liveOrigin()
     const api = await apiFor()
-    if (api === undefined) throw new Error(`no OmniRoute API key is configured (${envName})`)
+    if (api === undefined) throw new Error(`no OmniRoute API key is configured (${apiKeyEnv})`)
     // The available count is a property of the reading, not of the request, so
     // it is counted once per fetch and cached beside the catalog.
     const catalog = await read('models', refresh, async () => {
@@ -274,15 +352,19 @@ export function apply(ctx: HostContext, config: Config = {}): void {
   }
 
   const connectionsRoute = async (refresh: boolean): Promise<unknown> => {
+    const { apiKeyEnv } = live()
+    const origin = liveOrigin()
     const api = await apiFor()
-    if (api === undefined) throw new Error(`no OmniRoute API key is configured (${envName})`)
+    if (api === undefined) throw new Error(`no OmniRoute API key is configured (${apiKeyEnv})`)
     const connections = await read('connections', refresh, () => api.connections())
     return { status: 'ok', origin, fetchedAt: Date.now(), total: connections.length, connections }
   }
 
   const quotaRoute = async (refresh: boolean): Promise<unknown> => {
+    const { apiKeyEnv } = live()
+    const origin = liveOrigin()
     const api = await apiFor()
-    if (api === undefined) throw new Error(`no OmniRoute API key is configured (${envName})`)
+    if (api === undefined) throw new Error(`no OmniRoute API key is configured (${apiKeyEnv})`)
     // The connections are read once and handed to the quota read: asking the
     // client for them again would repeat `/api/providers` on every miss.
     const connections = await read('connections', refresh, () => api.connections())
@@ -318,7 +400,7 @@ export function apply(ctx: HostContext, config: Config = {}): void {
         // A refusal never carries the key or the router's own body: the
         // message is this plugin's own, and the cause is shortened to one line.
         const message = error instanceof Error ? error.message : String(error)
-        sendJson(res, 502, { status: 'error', message, origin })
+        sendJson(res, 502, { status: 'error', message, origin: liveOrigin() })
       }
     }
 
@@ -333,4 +415,16 @@ export function apply(ctx: HostContext, config: Config = {}): void {
       `omniroute: GET ${path}`,
     )
   }
+
+  // A settings write moves the live references in place. Dropping the served
+  // readings makes the next poll answer from the edited row instead of a
+  // cached body fetched from the previous origin, and the log line records it.
+  ctx.on('loader/volatile-update', () => {
+    cache.clear()
+    const { apiKeyEnv, timeoutMs, cacheSeconds, syncNamespace, syncProvider } = live()
+    ctx.logger.warn(
+      `omniroute: configuration updated — ${liveOrigin()} as ${apiKeyEnv},`
+        + ` ${timeoutMs}ms deadline, ${cacheSeconds}s cache, sync into ${syncNamespace}.providers.${syncProvider}`,
+    )
+  })
 }

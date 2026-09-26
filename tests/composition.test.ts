@@ -79,7 +79,20 @@ test('the plugin mounts, answers over real HTTP, and withdraws its routes on dis
 test('the exported Config carries every default and rejects a row outside its bounds', () => {
   // The Loader validates a bundle row against this schema, so the defaults and
   // the bounds are the configuration contract, not a comment about one.
-  assert.deepEqual(OmniRoute.Config({}), {
+  const parsed = OmniRoute.Config({}) as unknown as Record<string, { get(): unknown }>
+  assert.deepEqual(
+    Object.fromEntries(Object.keys(parsed).map(key => [key, parsed[key]?.get()])),
+    {
+      baseURL: OmniRoute.DEFAULT_BASE_URL,
+      apiKeyEnv: OmniRoute.DEFAULT_API_KEY_ENV,
+      timeoutMs: OmniRoute.DEFAULT_TIMEOUT_MS,
+      cacheSeconds: OmniRoute.DEFAULT_CACHE_SECONDS,
+      syncNamespace: OmniRoute.DEFAULT_SYNC_NAMESPACE,
+      syncProvider: OmniRoute.DEFAULT_SYNC_PROVIDER,
+    },
+  )
+  // The plain schema the route reads through agrees with the loader-facing one.
+  assert.deepEqual({ ...OmniRoute.resolveRow({}) }, {
     baseURL: OmniRoute.DEFAULT_BASE_URL,
     apiKeyEnv: OmniRoute.DEFAULT_API_KEY_ENV,
     timeoutMs: OmniRoute.DEFAULT_TIMEOUT_MS,

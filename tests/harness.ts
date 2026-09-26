@@ -24,10 +24,18 @@ export interface Services {
 }
 
 /** Mount the plugin over a fake context and return its routes by path. */
-export function mount(services: Services, config?: Record<string, unknown>): Map<string, WebRouteLike> {
+export function mount(
+  services: Services,
+  config?: Parameters<typeof apply>[1],
+): Map<string, WebRouteLike> & { emitVolatile: () => void } {
   const routes = new Map<string, WebRouteLike>()
+  const volatileListeners: (() => void)[] = []
   const ctx = {
     effect: (callback: () => Disposable | void): void => { callback() },
+    on: (event: string, listener: () => void): (() => void) => {
+      if (event === 'loader/volatile-update') volatileListeners.push(listener)
+      return () => {}
+    },
     get: (name: string): unknown => (services as Record<string, unknown>)[name],
     logger: { warn: (): void => {}, error: (): void => {} },
     webServer: {
@@ -39,7 +47,11 @@ export function mount(services: Services, config?: Record<string, unknown>): Map
   } as unknown as HostContext
   apply(ctx, config ?? {})
   assert.deepEqual([...routes.keys()].sort(), [ROUTE_CONNECTIONS, ROUTE_MODELS, ROUTE_QUOTA].sort())
-  return routes
+  // The routes stay a plain Map for the request cases; the volatile emitter
+  // rides along for the specs that move a live row reference and re-read.
+  return Object.assign(routes, {
+    emitVolatile: (): void => { for (const listener of volatileListeners) listener() },
+  })
 }
 
 /** Run one request through a route. */

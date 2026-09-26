@@ -21,6 +21,7 @@
  *
  * @module dsh-omniroute
  */
+import type { Volatile } from '@deepseek-ai/cordis';
 import Schema from '@deepseek-ai/schemastery';
 import type { HostContext } from './host.ts';
 /** Plugin name as it appears in the loader. */
@@ -45,29 +46,62 @@ export declare const DEFAULT_CACHE_SECONDS = 30;
 export declare const DEFAULT_SYNC_NAMESPACE = "llm-pi-ai";
 /** Provider route a model sync writes into. */
 export declare const DEFAULT_SYNC_PROVIDER = "omniroute";
-/** Configuration accepted from this plugin's row in a profile patch. */
+/**
+ * Configuration this plugin's row resolves to, as `apply` receives it.
+ *
+ * Every field is `volatile()` — the settings document accepts writes only under
+ * a volatile node, and the Plugins page's OmniRoute card edits exactly these —
+ * so the loader hands live references and each is read per request. `baseURL`
+ * and `apiKeyEnv` decide where the plugin talks and as whom; the two sync
+ * fields name the row `?sync=1` writes a model catalog into.
+ */
 export interface Config {
     /** OmniRoute origin, with or without its `/v1` path. @default http://localhost:20128 */
-    readonly baseURL?: string;
+    readonly baseURL: Volatile<string>;
     /** Credential reference holding the OmniRoute API key. @default OMNIROUTE_API_KEY */
-    readonly apiKeyEnv?: string;
+    readonly apiKeyEnv: Volatile<string>;
     /** Per-request deadline in milliseconds. @default 10000 */
-    readonly timeoutMs?: number;
+    readonly timeoutMs: Volatile<number>;
     /** Seconds a reading stays cached. `0` re-asks on every request. @default 30 */
-    readonly cacheSeconds?: number;
+    readonly cacheSeconds: Volatile<number>;
     /** Profile entry id `?sync=1` writes the model catalog into. @default llm-pi-ai */
-    readonly syncNamespace?: string;
+    readonly syncNamespace: Volatile<string>;
     /** Provider route `?sync=1` writes the model catalog into. @default omniroute */
-    readonly syncProvider?: string;
+    readonly syncProvider: Volatile<string>;
 }
+/** Raw row values, as a profile patch states them and as direct callers pass them. */
+export type Options = {
+    [K in keyof Config]?: Config[K] extends Volatile<infer T> ? T : Config[K];
+};
 /**
- * Row schema: what Cordis validates this plugin's `config` against, and where
- * each default lives.
+ * Row schema as Cordis resolves it: what this plugin's `config` is validated
+ * against, and where each default lives. Every field is editable from the
+ * Plugins page, so every one is volatile.
  */
-export declare const Config: Schema<Config>;
+export declare const Config: Schema<Schemastery.ObjectS<NoInfer<{
+    baseURL: Schema<string, string, "volatile-defined">;
+    apiKeyEnv: Schema<string, string, "volatile-defined">;
+    timeoutMs: Schema<number, number, "volatile-defined">;
+    cacheSeconds: Schema<number, number, "volatile-defined">;
+    syncNamespace: Schema<string, string, "volatile-defined">;
+    syncProvider: Schema<string, string, "volatile-defined">;
+}>>, Schemastery.ObjectT<NoInfer<{
+    baseURL: Schema<string, string, "volatile-defined">;
+    apiKeyEnv: Schema<string, string, "volatile-defined">;
+    timeoutMs: Schema<number, number, "volatile-defined">;
+    cacheSeconds: Schema<number, number, "volatile-defined">;
+    syncNamespace: Schema<string, string, "volatile-defined">;
+    syncProvider: Schema<string, string, "volatile-defined">;
+}>>, "plain">;
+/**
+ * Turn a row — live references or plain values — into validated plain options.
+ * @param row - the configured row.
+ * @returns the resolved options, defaults filled by the schema.
+ */
+export declare function resolveRow(row?: Config | Options): Required<Options>;
 /**
  * Mount the host half.
  * @param ctx - host context carrying the route carrier.
  * @param config - this plugin's row configuration.
  */
-export declare function apply(ctx: HostContext, config?: Config): void;
+export declare function apply(ctx: HostContext, row?: Config | Options): void;

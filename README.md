@@ -45,9 +45,16 @@ at boot, so a restart is what mounts the plugin. Do **not** also paste the `id: 
 
 ## Configure
 
-The row schema is the exported `Config`. Override the row from the profile's own
-`cordis.patch.yml`; a patch replaces the targeted row's whole `config`, so
-restate every key you keep:
+Every field is editable from the Web client: open **Plugins** → the
+**omniroute** row → **Configure**. The card validates the URL, the non-empty
+references, and the numeric bounds before the write, saves every changed field
+in one update, and offers **Reset to defaults** for the fields you overrode.
+Every field is `volatile()`, so a save reaches the running routes: each is read
+per request and a settings write drops the served readings, so a new origin or
+cache window applies to the next poll instead of a restart.
+
+The same row can be set by hand in the profile's own `cordis.patch.yml`; a patch
+replaces the targeted row's whole `config`, so restate every key you keep:
 
 ```yaml
 - id: omniroute
@@ -60,14 +67,14 @@ restate every key you keep:
     syncProvider: omniroute                  # which provider route it writes for
 ```
 
-| Key | Default | Meaning |
-|---|---|---|
-| `baseURL` | `http://localhost:20128` | The deployment. Its origin addresses OmniRoute's management API, so a `/v1` suffix is fine and ignored. |
-| `apiKeyEnv` | `OMNIROUTE_API_KEY` | Credential reference resolved through `ctx.credentials`, falling back to the launcher's environment. The key needs the scopes the endpoints use: this box's key carries `self:usage` and `manage`. |
-| `timeoutMs` | `10000` | Deadline for each OmniRoute request, including the connection listing. |
-| `cacheSeconds` | `30` | How long one route's reading is served before OmniRoute is asked again. `0` re-asks every time. |
-| `syncNamespace` | `llm-pi-ai` | Settings namespace `?sync=1` merges into. |
-| `syncProvider` | `omniroute` | Provider route inside that namespace. |
+| Key | Default | Bounds | Meaning |
+|---|---|---|---|
+| `baseURL` | `http://localhost:20128` | absolute http(s) | The deployment. Its origin addresses OmniRoute's management API, so a `/v1` suffix is fine and ignored. |
+| `apiKeyEnv` | `OMNIROUTE_API_KEY` | non-empty | Credential reference resolved through `ctx.credentials`, falling back to the launcher's environment. The key needs the scopes the endpoints use: this box's key carries `self:usage` and `manage`. |
+| `timeoutMs` | `10000` | 1–60000 | Deadline for each OmniRoute request, including the connection listing. |
+| `cacheSeconds` | `30` | 0–3600 | How long one route's reading is served before OmniRoute is asked again. `0` re-asks every time. |
+| `syncNamespace` | `llm-pi-ai` | non-empty | Settings namespace `?sync=1` merges into. |
+| `syncProvider` | `omniroute` | non-empty | Provider route inside that namespace. |
 
 ## Routes
 
