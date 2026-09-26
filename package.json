@@ -1,6 +1,6 @@
 {
   "name": "dsh-omniroute",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
@@ -30,7 +30,6 @@
     "compatibility": {
       "dsh": ">=0.1.0-rc.8 <0.2.0"
     },
-    "displayName": "\u4f59\u989d\u4e0e\u989d\u5ea6\u76d1\u63a7\uff08DSH Omniroute\uff09",
     "client": {
       "platform": "web",
       "inject": [
