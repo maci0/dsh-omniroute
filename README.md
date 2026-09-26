@@ -193,8 +193,8 @@ must withdraw every route.
   spends whichever account the router picks, so no single figure belongs to it.
   `dsh-quota-check`'s OmniRoute probe renders the fullest window across
   connections for exactly that reason.
-- **No browser half.** There is no card and no statusbar chip here; the routes
-  are the surface. `dsh-quota-check` draws the chip.
+- **No statusbar chip.** The browser half ships the row's configuration card
+  only; the routes are the read surface, and `dsh-quota-check` draws the chip.
 - **The catalog carries no capacities.** `/api/models` reports availability and
   vision but no context window, so a synced model entry sets only `id` and
   `name`. Set capacities in the provider row when they matter.
