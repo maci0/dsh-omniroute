@@ -293,7 +293,10 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
       if (started === generation) cache.set(key, { at: Date.now(), value })
       return value
     }).finally(() => {
-      inflight.delete(key)
+      // Only this read's own entry: a write that landed mid-read cleared the
+      // map, a later poll installed its own read under the same key, and
+      // retracting that one would leave the next poll with nothing to join.
+      if (inflight.get(key) === pending) inflight.delete(key)
     })
     inflight.set(key, pending)
     return pending

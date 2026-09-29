@@ -163,6 +163,32 @@ test('a refused read reports the status and never the router body', async () => 
   }
 })
 
+test('a connection id that is a dot segment never climbs out of the usage path', async () => {
+  const paths: string[] = []
+  const original = globalThis.fetch
+  globalThis.fetch = ((url: string | URL) => {
+    // The pathname a server would see, after the URL parser has resolved `.`
+    // and `..` segments.
+    const path = new URL(String(url)).pathname
+    paths.push(path)
+    const body = path === '/api/providers'
+      ? { connections: [{ id: '..', provider: 'deepseek', isActive: true, quotaVisible: true }] }
+      : { plan: 'DeepSeek', quotas: { credits_usd: { used: 1, remaining: 90 } } }
+    return Promise.resolve(new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+  }) as unknown as typeof fetch
+  try {
+    const api = createOmniRouteApi({ origin: 'http://box:20128', key: 'sk-test', timeoutMs: 1_000 })
+    const windows = await api.quota()
+    assert.deepEqual(paths, ['/api/providers'], 'an id no path can address is not asked at another endpoint')
+    assert.deepEqual(windows, [])
+  } finally {
+    globalThis.fetch = original
+  }
+})
+
 test('a configured base URL contributes its origin, not its /v1 path', () => {
   assert.equal(originOf('http://192.168.0.100:20128/v1', 'http://localhost:20128'), 'http://192.168.0.100:20128')
   assert.equal(originOf('not a url', 'http://localhost:20128'), 'http://localhost:20128')

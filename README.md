@@ -8,7 +8,7 @@ own origin, behind the same trust fence as the harness's browser routes, with th
 OmniRoute API key never leaving the host process.
 
 - `GET /omniroute/models` — the live catalog, with `available` and
-  `supportsVision` per model, and `?available=1`, `?q=<text>`, `?provider=<key>`
+  `vision` per model, and `?available=1`, `?q=<text>`, `?provider=<key>`
   to narrow it. `?sync=1` additionally copies the available models into a
   provider route's settings, which is how the model picker learns them.
 - `GET /omniroute/connections` — every upstream connection, with the id, the
@@ -20,7 +20,7 @@ Every route also answers `?refresh=1`, which ignores the cache for that read.
 
 ## What you get
 
-- **The live catalog, not `/v1/models`.** `available` and `supportsVision` per
+- **The live catalog, not `/v1/models`.** `available` and `vision` per
   model, with `?available=1`, `?q=`, and `?provider=` to narrow it.
 - **The account inventory.** Every upstream connection with its id, provider, switch
   state, and whether it publishes quota.

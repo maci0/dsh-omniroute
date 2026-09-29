@@ -236,7 +236,14 @@ export function createOmniRouteApi(options: OmniRouteApiOptions): OmniRouteApi {
     if (!response.ok) {
       throw new Error(`OmniRoute answered HTTP ${String(response.status)} for ${path}`)
     }
-    return await response.json()
+    // A body that is not JSON is reported as that and nothing more: the parse
+    // error a JSON reader raises quotes the first bytes of whatever the router
+    // answered, which would put the router's own body in this plugin's reply.
+    try {
+      return await response.json()
+    } catch {
+      throw new Error(`OmniRoute answered a non-JSON body for ${path}`)
+    }
   }
 
   const connections = async (): Promise<readonly OmniRouteConnection[]> =>
@@ -249,7 +256,11 @@ export function createOmniRouteApi(options: OmniRouteApiOptions): OmniRouteApi {
       const all = listed ?? await connections()
       // A connection that is off, or hides its quota, is not asked at all; one
       // that fails to answer contributes no window rather than failing the read.
-      const asked = all.filter(connection => connection.active && connection.quotaVisible)
+      // An id of `.` or `..` is asked neither: it survives `encodeURIComponent`
+      // and the URL parser then climbs out of `/api/usage/` into a different
+      // router endpoint, so no path can address it.
+      const asked = all.filter(connection => connection.active && connection.quotaVisible
+        && connection.id !== '.' && connection.id !== '..')
       const answers = await Promise.all(asked.map(async (connection) => {
         try {
           return parseUsage(await get(`/api/usage/${encodeURIComponent(connection.id)}`), connection)

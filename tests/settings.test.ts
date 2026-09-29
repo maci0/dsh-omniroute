@@ -236,6 +236,67 @@ test('a poll that starts after a settings write does not inherit an older read',
   }
 })
 
+test('the read a settings write orphans must not evict the read that replaced it', async () => {
+  const state = { baseURL: 'http://a.example:20128' }
+  const routes = mount(SERVICES, {
+    baseURL: ref(() => state.baseURL),
+    apiKeyEnv: ref(() => 'OMNIROUTE_API_KEY'),
+    timeoutMs: ref(() => 10_000),
+    cacheSeconds: ref(() => 3600),
+    syncNamespace: ref(() => 'llm-pi-ai'),
+    syncProvider: ref(() => 'omniroute'),
+  })
+  const seen: string[] = []
+  const original = globalThis.fetch
+  // Every answer waits for its own release, so two reads can be in flight at
+  // once and a third poll has something to coalesce onto.
+  const held: (() => void)[] = []
+  globalThis.fetch = ((url: string | URL) => {
+    seen.push(String(url))
+    return new Promise<Response>((resolve) => {
+      held.push(() => {
+        resolve(new Response(JSON.stringify(catalog()), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }))
+      })
+    })
+  }) as typeof globalThis.fetch
+  try {
+    const route = routes.get(ROUTE_MODELS)
+    assert.ok(route)
+    const first = request(route, ROUTE_MODELS)
+    await new Promise((resolve) => { setImmediate(resolve) })
+    assert.equal(seen.length, 1, 'the first read is in flight')
+
+    state.baseURL = 'http://b.example:20129'
+    routes.emitVolatile()
+
+    // A poll that starts after the write is not handed the orphaned read, so it
+    // starts its own.
+    const second = request(route, ROUTE_MODELS)
+    await new Promise((resolve) => { setImmediate(resolve) })
+    assert.equal(seen.length, 2, 'the post-write poll started its own read')
+
+    // The orphaned read settles now. Its cleanup must only retract its own
+    // entry: deleting whatever the map holds evicts the live read, and the next
+    // poll then asks upstream a third time for the same reading.
+    held[0]?.()
+    await new Promise((resolve) => { setImmediate(resolve) })
+
+    const third = request(route, ROUTE_MODELS)
+    await new Promise((resolve) => { setImmediate(resolve) })
+    assert.equal(seen.length, 2, 'a poll between reads joins the live read instead of starting another')
+
+    held[1]?.()
+    assert.equal((await third).status, 200)
+    assert.equal((await second).status, 200)
+    assert.equal((await first).status, 200)
+  } finally {
+    globalThis.fetch = original
+  }
+})
+
 test('a row outside the schema bounds still fails at the boundary', () => {
   assert.throws(() => OmniRoute.Config({ timeoutMs: 0 }), /timeoutMs/)
   assert.throws(() => OmniRoute.resolveRow({ cacheSeconds: -1 }), /cacheSeconds/)
