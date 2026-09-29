@@ -28,7 +28,9 @@ import {
   createOmniRouteApi,
   originOf,
   type OmniRouteApi,
+  type OmniRouteConnection,
   type OmniRouteModel,
+  type OmniRouteQuota,
 } from './omniroute.ts'
 import type {
   ConnectionLike,
@@ -264,6 +266,10 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
   }
   const cache = new Map<string, { at: number; value: unknown }>()
   const inflight = new Map<string, Promise<unknown>>()
+  // Bumped by a settings write. A read that started before one belongs to the
+  // old row, so it must not fill the cache the write just emptied: doing so
+  // would serve the previous origin or cache window for another whole window.
+  let generation = 0
 
   /** The client for one request, built after its credential resolved. */
   const apiFor = async (): Promise<OmniRouteApi | undefined> => {
@@ -280,8 +286,11 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
     if (!refresh && hit !== undefined && Date.now() - hit.at < live().cacheSeconds * 1_000) return hit.value as T
     const running = inflight.get(key)
     if (running !== undefined) return running as Promise<T>
+    const started = generation
     const pending = load().then((value) => {
-      cache.set(key, { at: Date.now(), value })
+      // A write that landed mid-read emptied the cache; the value it fetched
+      // belongs to the row before the write, so it is answered but not kept.
+      if (started === generation) cache.set(key, { at: Date.now(), value })
       return value
     }).finally(() => {
       inflight.delete(key)
@@ -351,12 +360,24 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
     return reply
   }
 
+  /**
+   * The connection list and the windows read from it are one reading: cached
+   * apart, a refresh of one alone would answer with windows for connections the
+   * same reply does not list. Both routes therefore serve this pair, so the two
+   * halves can never disagree, and `/api/providers` is asked once per miss.
+   */
+  const readConnections = (api: OmniRouteApi, refresh: boolean): Promise<{ connections: readonly OmniRouteConnection[]; windows: readonly OmniRouteQuota[] }> =>
+    read('connections', refresh, async () => {
+      const listed = await api.connections()
+      return { connections: listed, windows: await api.quota(listed) }
+    })
+
   const connectionsRoute = async (refresh: boolean): Promise<unknown> => {
     const { apiKeyEnv } = live()
     const origin = liveOrigin()
     const api = await apiFor()
     if (api === undefined) throw new Error(`no OmniRoute API key is configured (${apiKeyEnv})`)
-    const connections = await read('connections', refresh, () => api.connections())
+    const { connections } = await readConnections(api, refresh)
     return { status: 'ok', origin, fetchedAt: Date.now(), total: connections.length, connections }
   }
 
@@ -365,10 +386,7 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
     const origin = liveOrigin()
     const api = await apiFor()
     if (api === undefined) throw new Error(`no OmniRoute API key is configured (${apiKeyEnv})`)
-    // The connections are read once and handed to the quota read: asking the
-    // client for them again would repeat `/api/providers` on every miss.
-    const connections = await read('connections', refresh, () => api.connections())
-    const windows = await read('quota', refresh, () => api.quota(connections))
+    const { connections, windows } = await readConnections(api, refresh)
     return {
       status: 'ok',
       origin,
@@ -421,6 +439,10 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
   // cached body fetched from the previous origin, and the log line records it.
   ctx.on('loader/volatile-update', () => {
     cache.clear()
+    // A poll that starts after the write must ask the new row, so the reads the
+    // old row started stop being handed out. Their callers still get an answer.
+    inflight.clear()
+    generation += 1
     const { apiKeyEnv, timeoutMs, cacheSeconds, syncNamespace, syncProvider } = live()
     ctx.logger.warn(
       `omniroute: configuration updated — ${liveOrigin()} as ${apiKeyEnv},`

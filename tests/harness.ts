@@ -76,8 +76,17 @@ export function routeOf(routes: Map<string, WebRouteLike>, path: string): WebRou
   return route
 }
 
-/** One stubbed answer per pathname; a path this map lacks answers 404. */
-export function stubFetch(bodies: Record<string, unknown>, calls: string[] = []): { calls: string[]; restore: () => void } {
+/**
+ * One stubbed answer per pathname; a path this map lacks answers 404.
+ * @param bodies - mutable map from pathname to body, so a case can move an
+ * upstream answer between polls.
+ * @param calls - request URLs, appended in call order.
+ * @returns the calls, the bodies map, and the restore.
+ */
+export function stubFetch(
+  bodies: Record<string, unknown>,
+  calls: string[] = [],
+): { calls: string[]; bodies: Record<string, unknown>; restore: () => void } {
   const original = globalThis.fetch
   globalThis.fetch = ((url: string | URL) => {
     const target = String(url)
@@ -89,5 +98,5 @@ export function stubFetch(bodies: Record<string, unknown>, calls: string[] = [])
       json: () => Promise.resolve(body ?? {}),
     })
   }) as unknown as typeof fetch
-  return { calls, restore: () => { globalThis.fetch = original } }
+  return { calls, bodies, restore: () => { globalThis.fetch = original } }
 }

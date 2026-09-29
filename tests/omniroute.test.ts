@@ -166,5 +166,10 @@ test('a refused read reports the status and never the router body', async () => 
 test('a configured base URL contributes its origin, not its /v1 path', () => {
   assert.equal(originOf('http://192.168.0.100:20128/v1', 'http://localhost:20128'), 'http://192.168.0.100:20128')
   assert.equal(originOf('not a url', 'http://localhost:20128'), 'http://localhost:20128')
+  assert.equal(originOf('http://localhost:20128', 'http://fallback:1'), 'http://localhost:20128')
+  // A scheme-less host parses as a valid URL whose origin is the string
+  // "null", which would be used as a request origin instead of the fallback.
+  assert.equal(originOf('192.168.0.100:20128', 'http://localhost:20128'), 'http://localhost:20128')
+  assert.equal(originOf('localhost:20128', 'http://localhost:20128'), 'http://localhost:20128')
   assert.equal(originOf(undefined, 'http://localhost:20128'), 'http://localhost:20128')
 })

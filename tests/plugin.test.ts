@@ -106,6 +106,38 @@ test('the quota route serves every window and the reached limits', async () => {
   }
 })
 
+test('a quota reply never lists a connection its windows were not read for', async () => {
+  const routes = mount(KEYED, { cacheSeconds: 600 })
+  const stub = stubFetch({
+    '/api/providers': {
+      connections: [{ id: 'x', provider: 'deepseek', name: 'main', isActive: true, quotaVisible: true }],
+    },
+    '/api/usage/x': { plan: 'DeepSeek', quotas: { credits_usd: { used: 1, remaining: 90 } } },
+    '/api/usage/y': { plan: 'GLM', quotas: { weekly: { used: 2, remaining: 8 } } },
+  })
+  try {
+    const first = await request(routes.get(ROUTE_QUOTA) as WebRouteLike, ROUTE_QUOTA)
+    assert.deepEqual((first.body as { windows: { connection: string }[] }).windows.map(w => w.connection), ['x'])
+
+    // A connection is added upstream and the listing route refreshes alone.
+    stub.bodies['/api/providers'] = {
+      connections: [
+        { id: 'x', provider: 'deepseek', name: 'main', isActive: true, quotaVisible: true },
+        { id: 'y', provider: 'glm', name: 'new', isActive: true, quotaVisible: true },
+      ],
+    }
+    await request(routes.get(ROUTE_CONNECTIONS) as WebRouteLike, `${ROUTE_CONNECTIONS}?refresh=1`)
+
+    const next = await request(routes.get(ROUTE_QUOTA) as WebRouteLike, ROUTE_QUOTA)
+    const body = next.body as { connections: { id: string }[]; windows: { connection: string }[] }
+    assert.deepEqual(body.connections.map(c => c.id), ['x', 'y'])
+    assert.deepEqual(body.windows.map(w => w.connection), ['x', 'y'],
+      'windows belong to the connections listed beside them')
+  } finally {
+    stub.restore()
+  }
+})
+
 test('a reading is cached, and refresh=1 asks again', async () => {
   const routes = mount(KEYED, { cacheSeconds: 60 })
   const stub = stubFetch({ '/api/providers': { connections: [] } })

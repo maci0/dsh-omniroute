@@ -19,7 +19,7 @@ function ref<T>(read: () => T): { get(): T } {
 
 /** A catalog payload the transport stub answers with. */
 function catalog(): unknown {
-  return { data: [{ id: 'model-a', name: 'Model A', available: true, provider: 'acme' }] }
+  return { models: [{ id: 'model-a', name: 'Model A', available: true, provider: 'acme' }] }
 }
 
 /** Replace global fetch for one case; returns the URLs it saw and a restore. */
@@ -121,6 +121,118 @@ test('a live origin edit is used by the next request', async () => {
     assert.match(seen[1] ?? '', /127\.0\.0\.1:20129/u)
   } finally {
     restore()
+  }
+})
+
+test('a read in flight during a settings write must not re-fill the cache', async () => {
+  const state = { baseURL: 'http://localhost:20128' }
+  const routes = mount(SERVICES, {
+    baseURL: ref(() => state.baseURL),
+    apiKeyEnv: ref(() => 'OMNIROUTE_API_KEY'),
+    timeoutMs: ref(() => 10_000),
+    cacheSeconds: ref(() => 3600),
+    syncNamespace: ref(() => 'llm-pi-ai'),
+    syncProvider: ref(() => 'omniroute'),
+  })
+  const seen: string[] = []
+  const original = globalThis.fetch
+  let release: (() => void) | undefined
+  let held = false
+  globalThis.fetch = ((url: string | URL) => {
+    seen.push(String(url))
+    const answer = () => Promise.resolve({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: () => Promise.resolve(catalog()),
+      text: () => Promise.resolve(JSON.stringify(catalog())),
+    } as Response)
+    // The first read answers only once the case releases it, so a settings
+    // write lands while that read is still in flight.
+    if (!held) {
+      held = true
+      return new Promise<Response>((resolve) => { release = () => { void answer().then(resolve) } })
+    }
+    return answer()
+  }) as typeof globalThis.fetch
+  try {
+    const route = routes.get(ROUTE_MODELS)
+    assert.ok(route)
+    const first = request(route, ROUTE_MODELS)
+    await new Promise((resolve) => { setImmediate(resolve) })
+    assert.equal(seen.length, 1, 'the first read is in flight')
+
+    state.baseURL = 'http://127.0.0.1:20129/v1'
+    routes.emitVolatile()
+    release?.()
+    assert.equal((await first).status, 200)
+
+    await request(route, ROUTE_MODELS)
+    assert.match(seen[1] ?? '', /127\.0\.0\.1:20129/u, 'the edit must reach the next poll, not be re-filled by the read that raced it')
+  } finally {
+    globalThis.fetch = original
+  }
+})
+
+test('a poll that starts after a settings write does not inherit an older read', async () => {
+  const state = { baseURL: 'http://a.example:20128' }
+  const routes = mount(SERVICES, {
+    baseURL: ref(() => state.baseURL),
+    apiKeyEnv: ref(() => 'OMNIROUTE_API_KEY'),
+    timeoutMs: ref(() => 10_000),
+    cacheSeconds: ref(() => 3600),
+    syncNamespace: ref(() => 'llm-pi-ai'),
+    syncProvider: ref(() => 'omniroute'),
+  })
+  const seen: string[] = []
+  const original = globalThis.fetch
+  let release: (() => void) | undefined
+  let held = false
+  globalThis.fetch = ((url: string | URL) => {
+    seen.push(String(url))
+    const answer = () => Promise.resolve({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: () => Promise.resolve(catalog()),
+      text: () => Promise.resolve(JSON.stringify(catalog())),
+    } as Response)
+    // The first read hangs until released, so a settings write and a fresh poll
+    // both land while it is still in flight.
+    if (!held) {
+      held = true
+      return new Promise<Response>((resolve) => { release = () => { void answer().then(resolve) } })
+    }
+    return answer()
+  }) as typeof globalThis.fetch
+  try {
+    const route = routes.get(ROUTE_MODELS)
+    assert.ok(route)
+    const first = request(route, ROUTE_MODELS)
+    await new Promise((resolve) => { setImmediate(resolve) })
+    assert.equal(seen.length, 1, 'the first read is in flight')
+
+    state.baseURL = 'http://b.example:20129'
+    routes.emitVolatile()
+
+    // This poll starts after the write, so it must ask the new origin rather
+    // than wait on the read the old row started. It is raced against a few
+    // turns so the pre-fix deadlock reports instead of hanging the suite.
+    const second = request(route, ROUTE_MODELS)
+    const settled = await Promise.race([
+      second.then(reply => reply.body as { origin: string }),
+      new Promise<undefined>((resolve) => {
+        setImmediate(() => { setImmediate(() => { setImmediate(() => { resolve(undefined) }) }) })
+      }),
+    ])
+    assert.equal(settled?.origin, 'http://b.example:20129', 'a post-write poll starts its own read')
+    assert.match(seen[1] ?? '', /b\.example:20129/u)
+
+    release?.()
+    assert.equal((await first).status, 200)
+    assert.equal((await second).status, 200)
+  } finally {
+    globalThis.fetch = original
   }
 })
 
