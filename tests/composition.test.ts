@@ -51,6 +51,7 @@ test('the plugin mounts, answers over real HTTP, and withdraws its routes on dis
     const server = ctx.get('webServer') as unknown as { port: number }
     assert.ok(server.port > 0, 'the carrier listens on an OS-assigned port')
     ctx.provide('credentials', { resolve: async () => ({ value: 'sk-test' }) })
+    ctx.provide('connection', { requestRejection: () => undefined })
     ctx.provide('settings', { update: async (ns: string, patch: object) => { writes.push({ ns, patch }) } })
 
     const plugin = await ctx.plugin(OmniRoute as unknown as Parameters<typeof ctx.plugin>[0], {
@@ -72,6 +73,25 @@ test('the plugin mounts, answers over real HTTP, and withdraws its routes on dis
     assert.equal((await get(`${origin}${OmniRoute.ROUTE_MODELS}`)).status, 404)
   } finally {
     globalThis.fetch = original
+    await carrier.dispose()
+  }
+})
+
+test('no route answers until the composition mounts its trust fence', async () => {
+  const ctx = new Context()
+  const carrier = await ctx.plugin(WebServer, { host: '127.0.0.1', port: 0 })
+  try {
+    const server = ctx.get('webServer') as unknown as { port: number }
+    ctx.provide('credentials', { resolve: async () => ({ value: 'sk-test' }) })
+    await ctx.plugin(OmniRoute as unknown as Parameters<typeof ctx.plugin>[0], { cacheSeconds: 0 })
+    const url = `http://127.0.0.1:${String(server.port)}${OmniRoute.ROUTE_CONNECTIONS}`
+    // Without `connection` nothing would refuse a cross-origin or
+    // unauthenticated caller, so the routes must not exist at all.
+    assert.equal((await get(url)).status, 404)
+
+    ctx.provide('connection', { requestRejection: () => 401 as const })
+    assert.equal((await get(url)).status, 401)
+  } finally {
     await carrier.dispose()
   }
 })

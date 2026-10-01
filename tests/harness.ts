@@ -16,7 +16,8 @@ export interface Captured {
   body: unknown
 }
 
-/** Services a case may mount; absent keys read as "not mounted". */
+/** Optional services a case may mount; absent keys read as "not mounted". The
+ * fence is injected, so an absent `connection` admits every request. */
 export interface Services {
   settings?: { update(ns: string, patch: object): Promise<void> }
   credentials?: { resolve(ref: string): Promise<{ value: string } | undefined> }
@@ -38,6 +39,7 @@ export function mount(
     },
     get: (name: string): unknown => (services as Record<string, unknown>)[name],
     logger: { warn: (): void => {}, error: (): void => {} },
+    connection: services.connection ?? { requestRejection: (): undefined => undefined },
     webServer: {
       register: (route: WebRouteLike): Disposable => {
         routes.set(route.path, route)
