@@ -26,7 +26,7 @@ export interface CredentialsLike {
 export interface SettingsLike {
     /**
      * Merge a patch into one profile entry.
-     * @param ns - profile entry id (v0.1.7), not a settings namespace.
+     * @param ns - profile entry id, not a settings namespace.
      * @param patch - plain-object patch over that entry.
      * @returns when the write is persisted.
      */
@@ -68,7 +68,7 @@ export interface WebServerLike {
      */
     register(route: WebRouteLike): Disposable;
 }
-/** The composition's trust fence, when one is mounted. */
+/** The composition's trust fence. */
 export interface ConnectionLike {
     /**
      * Reject an untrusted or unauthenticated request.
@@ -82,10 +82,10 @@ export interface ConnectionLike {
 /**
  * Structural view of the Cordis context this plugin uses.
  *
- * `inject` guarantees `webServer`; the credentials and settings services are
- * read through `get`, so a composition without them degrades to "no
- * credential to read with" and omits the model sync instead of failing to
- * mount.
+ * `inject` guarantees `webServer` and `connection`; the credentials and
+ * settings services are read through `get`, so a composition without them
+ * degrades to "no credential to read with" and refuses the model sync instead
+ * of failing to mount.
  */
 export interface HostContext {
     /** Bind a registration's lifetime to this plugin's fiber. */
@@ -107,4 +107,6 @@ export interface HostContext {
     };
     /** HTTP route carrier (guaranteed by `inject`). */
     readonly webServer: WebServerLike;
+    /** Trust fence every route checks first (guaranteed by `inject`). */
+    readonly connection: ConnectionLike;
 }
