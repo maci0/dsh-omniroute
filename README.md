@@ -61,7 +61,7 @@ replaces the targeted row's whole `config`, so restate every key you keep:
 
 | Key | Default | Bounds | Meaning |
 |---|---|---|---|
-| `baseURL` | `http://localhost:20128` | absolute http(s) | The deployment. Its origin addresses OmniRoute's management API, so a `/v1` suffix is fine and ignored. |
+| `baseURL` | `http://localhost:20128` | absolute http(s) | The deployment. Its origin addresses OmniRoute's management API, so a `/v1` suffix is fine and ignored. A value without an http(s) scheme fails at load, and a live edit to one makes every route answer a configuration error without asking anything; no default origin is guessed. |
 | `apiKeyEnv` | `OMNIROUTE_API_KEY` | non-empty | Credential reference resolved through `ctx.credentials`, falling back to the launcher's environment. The key needs the scopes the endpoints use: this box's key carries `self:usage` and `manage`. |
 | `timeoutMs` | `10000` | 1–60000 | Deadline for each OmniRoute request, including the connection listing. |
 | `cacheSeconds` | `30` | 0–3600 | How long one reading is served before OmniRoute is asked again. `0` re-asks every time. |
