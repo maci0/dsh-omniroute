@@ -237,6 +237,11 @@ test('a failure outside this plugin is answered without its raw text', async () 
 test('a router that does not answer in time is reported as that', async () => {
   const routes = mount(KEYED, { cacheSeconds: 0, timeoutMs: 20 })
   const original = globalThis.fetch
+  // `AbortSignal.timeout` does not hold the event loop open, and the stubbed
+  // fetch never settles, so on Node 22 the runner saw an empty loop and
+  // cancelled the test before the deadline fired. A server keeps the loop
+  // alive in production; this interval stands in for it.
+  const keepAlive = setInterval(() => {}, 1_000)
   globalThis.fetch = ((_url: string, init?: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
     init?.signal?.addEventListener('abort', () => { reject(init.signal?.reason) })
   })) as unknown as typeof fetch
@@ -245,6 +250,7 @@ test('a router that does not answer in time is reported as that', async () => {
     assert.equal(reply.status, 502)
     assert.match(String((reply.body as { message: string }).message), /did not answer \/api\/models within 20ms/)
   } finally {
+    clearInterval(keepAlive)
     globalThis.fetch = original
   }
 })
