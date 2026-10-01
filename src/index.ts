@@ -26,6 +26,7 @@ import type { Volatile } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import {
   createOmniRouteApi,
+  OmniRouteError,
   originOf,
   type OmniRouteApi,
   type OmniRouteConnection,
@@ -225,13 +226,18 @@ async function syncModels(
   models: readonly OmniRouteModel[],
 ): Promise<number> {
   const settings = ctx.get('settings') as SettingsLike | undefined
-  if (settings === undefined) throw new Error('the settings service is not mounted, so nothing can be written')
+  if (settings === undefined) throw new OmniRouteError('the settings service is not mounted, so nothing can be written')
   const entries = models.map(model => {
     const entry: Record<string, unknown> = { id: model.id }
     if (model.name !== undefined) entry['name'] = model.name
     return entry
   })
-  await settings.update(namespace, { providers: { [provider]: { models: entries } } })
+  try {
+    await settings.update(namespace, { providers: { [provider]: { models: entries } } })
+  } catch (error) {
+    ctx.logger.warn(`omniroute: the model sync into ${namespace} failed (${String(error)})`)
+    throw new OmniRouteError(`the settings service refused the model sync into ${namespace}; the host log names the cause`)
+  }
   return entries.length
 }
 
@@ -322,7 +328,7 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
     const { apiKeyEnv, syncNamespace, syncProvider } = live()
     const origin = liveOrigin()
     const api = await apiFor()
-    if (api === undefined) throw new Error(`no OmniRoute API key is configured (${apiKeyEnv})`)
+    if (api === undefined) throw new OmniRouteError(`no OmniRoute API key is configured (${apiKeyEnv})`)
     // The available count is a property of the reading, not of the request, so
     // it is counted once per fetch and cached beside the catalog.
     const catalog = await read('models', refresh, async () => {
@@ -377,7 +383,7 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
     const { apiKeyEnv } = live()
     const origin = liveOrigin()
     const api = await apiFor()
-    if (api === undefined) throw new Error(`no OmniRoute API key is configured (${apiKeyEnv})`)
+    if (api === undefined) throw new OmniRouteError(`no OmniRoute API key is configured (${apiKeyEnv})`)
     const { connections } = await readConnections(api, refresh)
     return { status: 'ok', origin, fetchedAt: Date.now(), total: connections.length, connections }
   }
@@ -386,7 +392,7 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
     const { apiKeyEnv } = live()
     const origin = liveOrigin()
     const api = await apiFor()
-    if (api === undefined) throw new Error(`no OmniRoute API key is configured (${apiKeyEnv})`)
+    if (api === undefined) throw new OmniRouteError(`no OmniRoute API key is configured (${apiKeyEnv})`)
     const { connections, windows } = await readConnections(api, refresh)
     return {
       status: 'ok',
@@ -399,7 +405,7 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
   }
 
   /** One shared GET wrapper around every route handler. */
-  const handlerFor = (run: (params: URLSearchParams, refresh: boolean) => Promise<unknown>) =>
+  const handlerFor = (path: string, run: (params: URLSearchParams, refresh: boolean) => Promise<unknown>) =>
     async (req: RequestLike, res: ResponseLike): Promise<void> => {
       const rejection = ctx.connection.requestRejection(req)
       if (rejection !== undefined) {
@@ -416,9 +422,16 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
       try {
         sendJson(res, 200, await run(params, params.get('refresh') === '1'))
       } catch (error) {
-        // A refusal never carries the key or the router's own body: the
-        // message is this plugin's own, and the cause is shortened to one line.
-        const message = error instanceof Error ? error.message : String(error)
+        // A refusal never carries the key, the router's own body, or another
+        // service's exception text: only this plugin's own sentence is sent,
+        // and anything else is logged here and answered generically.
+        let message: string
+        if (error instanceof OmniRouteError) {
+          message = error.message
+        } else {
+          ctx.logger.warn(`omniroute: GET ${path} failed (${String(error)})`)
+          message = 'the read failed; the host log names the cause'
+        }
         sendJson(res, 502, { status: 'error', message, origin: liveOrigin() })
       }
     }
@@ -430,7 +443,7 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
   ]
   for (const [path, run] of routes) {
     ctx.effect(
-      (): Disposable => ctx.webServer.register({ kind: 'exact', path, handler: handlerFor(run) }),
+      (): Disposable => ctx.webServer.register({ kind: 'exact', path, handler: handlerFor(path, run) }),
       `omniroute: GET ${path}`,
     )
   }

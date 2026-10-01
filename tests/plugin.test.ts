@@ -209,3 +209,42 @@ test('the trust fence, the method, and a failed read are all answered in JSON', 
     stub.restore()
   }
 })
+
+test('a failure outside this plugin is answered without its raw text', async () => {
+  // A credential store or settings service may phrase a failure with host
+  // paths or internals; the browser gets this plugin's own sentence.
+  const locked = mount({ credentials: { resolve: async () => { throw new Error('keyring /home/u/.vault locked') } } })
+  const stub = stubFetch({ '/api/models': CATALOG })
+  try {
+    const reply = await request(locked.get(ROUTE_MODELS) as WebRouteLike, ROUTE_MODELS)
+    assert.equal(reply.status, 502)
+    assert.doesNotMatch(String((reply.body as { message: string }).message), /keyring|vault/)
+
+    const refused = mount({
+      ...KEYED,
+      settings: { update: async () => { throw new Error('No configurable plugin entry at /srv/profile/cordis.yml:12') } },
+    }, { cacheSeconds: 0, syncNamespace: 'llm-elsewhere' })
+    const sync = await request(refused.get(ROUTE_MODELS) as WebRouteLike, `${ROUTE_MODELS}?sync=1`)
+    assert.equal(sync.status, 502)
+    const message = String((sync.body as { message: string }).message)
+    assert.doesNotMatch(message, /cordis\.yml/)
+    assert.match(message, /llm-elsewhere/)
+  } finally {
+    stub.restore()
+  }
+})
+
+test('a router that does not answer in time is reported as that', async () => {
+  const routes = mount(KEYED, { cacheSeconds: 0, timeoutMs: 20 })
+  const original = globalThis.fetch
+  globalThis.fetch = ((_url: string, init?: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => { reject(init.signal?.reason) })
+  })) as unknown as typeof fetch
+  try {
+    const reply = await request(routes.get(ROUTE_MODELS) as WebRouteLike, ROUTE_MODELS)
+    assert.equal(reply.status, 502)
+    assert.match(String((reply.body as { message: string }).message), /did not answer \/api\/models within 20ms/)
+  } finally {
+    globalThis.fetch = original
+  }
+})
