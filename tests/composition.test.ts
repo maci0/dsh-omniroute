@@ -3,8 +3,8 @@
  * `Context` beside the real HTTP carrier
  * (`@deepseek-ai/dsh-host-webserver`) on an OS-assigned port, and the routes
  * are driven over real HTTP rather than through a captured handler object.
- * Only OmniRoute itself is stubbed — that is the expensive, nondeterministic
- * boundary — so routing, JSON encoding, credential resolution, the settings
+ * Only OmniRoute itself is stubbed (the expensive, nondeterministic
+ * boundary), so routing, JSON encoding, credential resolution, the settings
  * write, and teardown run against the shipping implementation.
  *
  * The spec owns its port: the carrier is mounted on port 0 and disposed in the
