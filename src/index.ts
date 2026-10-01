@@ -335,14 +335,14 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
       const models = await api.models()
       let available = 0
       for (const model of models) if (model.available) available += 1
-      return { models, available }
+      return { models, available, fetchedAt: Date.now() }
     })
     const shown = filtered(catalog.models, params)
     const reply: Record<string, unknown> = {
       status: 'ok',
       provider: syncProvider,
       origin,
-      fetchedAt: Date.now(),
+      fetchedAt: catalog.fetchedAt,
       counts: {
         total: catalog.models.length,
         available: catalog.available,
@@ -373,10 +373,11 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
    * same reply does not list. Both routes therefore serve this pair, so the two
    * halves can never disagree, and `/api/providers` is asked once per miss.
    */
-  const readConnections = (api: OmniRouteApi, refresh: boolean): Promise<{ connections: readonly OmniRouteConnection[]; windows: readonly OmniRouteQuota[] }> =>
+  const readConnections = (api: OmniRouteApi, refresh: boolean): Promise<{ connections: readonly OmniRouteConnection[]; windows: readonly OmniRouteQuota[]; fetchedAt: number }> =>
     read('connections', refresh, async () => {
       const listed = await api.connections()
-      return { connections: listed, windows: await api.quota(listed) }
+      const windows = await api.quota(listed)
+      return { connections: listed, windows, fetchedAt: Date.now() }
     })
 
   const connectionsRoute = async (refresh: boolean): Promise<unknown> => {
@@ -384,8 +385,8 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
     const origin = liveOrigin()
     const api = await apiFor()
     if (api === undefined) throw new OmniRouteError(`no OmniRoute API key is configured (${apiKeyEnv})`)
-    const { connections } = await readConnections(api, refresh)
-    return { status: 'ok', origin, fetchedAt: Date.now(), total: connections.length, connections }
+    const { connections, fetchedAt } = await readConnections(api, refresh)
+    return { status: 'ok', origin, fetchedAt, total: connections.length, connections }
   }
 
   const quotaRoute = async (refresh: boolean): Promise<unknown> => {
@@ -393,11 +394,11 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
     const origin = liveOrigin()
     const api = await apiFor()
     if (api === undefined) throw new OmniRouteError(`no OmniRoute API key is configured (${apiKeyEnv})`)
-    const { connections, windows } = await readConnections(api, refresh)
+    const { connections, windows, fetchedAt } = await readConnections(api, refresh)
     return {
       status: 'ok',
       origin,
-      fetchedAt: Date.now(),
+      fetchedAt,
       connections,
       windows,
       limitReached: windows.filter(window => window.limitReached).map(window => window.plan ?? window.connection),
