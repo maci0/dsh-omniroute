@@ -291,12 +291,10 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
   let generation = 0
 
   /** The client for one request, built after its credential resolved. */
-  const apiFor = async (): Promise<OmniRouteApi | undefined> => {
-    const { apiKeyEnv, timeoutMs } = live()
+  const apiFor = async (origin: string, { apiKeyEnv, timeoutMs }: Required<Options>): Promise<OmniRouteApi> => {
     const key = await apiKeyOf(ctx, apiKeyEnv)
-    return key === undefined
-      ? undefined
-      : createOmniRouteApi({ origin: liveOrigin(), key, timeoutMs })
+    if (key === undefined) throw new OmniRouteError(`no OmniRoute API key is configured (${apiKeyEnv})`)
+    return createOmniRouteApi({ origin, key, timeoutMs })
   }
 
   /** Serve one cached read, keyed by route name. */
@@ -340,13 +338,13 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
   }
 
   const modelsRoute = async (params: URLSearchParams, refresh: boolean): Promise<unknown> => {
-    const { apiKeyEnv, syncNamespace, syncProvider } = live()
+    const row = live()
+    const { syncNamespace, syncProvider } = row
     const origin = liveOrigin()
-    const api = await apiFor()
-    if (api === undefined) throw new OmniRouteError(`no OmniRoute API key is configured (${apiKeyEnv})`)
     // The available count is a property of the reading, not of the request, so
     // it is counted once per fetch and cached beside the catalog.
     const catalog = await read('models', refresh, async () => {
+      const api = await apiFor(origin, row)
       const models = await api.models()
       let available = 0
       for (const model of models) if (model.available) available += 1
@@ -388,28 +386,25 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
    * same reply does not list. Both routes therefore serve this pair, so the two
    * halves can never disagree, and `/api/providers` is asked once per miss.
    */
-  const readConnections = (api: OmniRouteApi, refresh: boolean): Promise<{ connections: readonly OmniRouteConnection[]; windows: readonly OmniRouteQuota[]; fetchedAt: number }> =>
+  const readConnections = (origin: string, row: Required<Options>, refresh: boolean): Promise<{ connections: readonly OmniRouteConnection[]; windows: readonly OmniRouteQuota[]; fetchedAt: number }> =>
     read('connections', refresh, async () => {
+      const api = await apiFor(origin, row)
       const listed = await api.connections()
       const windows = await api.quota(listed)
       return { connections: listed, windows, fetchedAt: Date.now() }
     })
 
   const connectionsRoute = async (refresh: boolean): Promise<unknown> => {
-    const { apiKeyEnv } = live()
+    const row = live()
     const origin = liveOrigin()
-    const api = await apiFor()
-    if (api === undefined) throw new OmniRouteError(`no OmniRoute API key is configured (${apiKeyEnv})`)
-    const { connections, fetchedAt } = await readConnections(api, refresh)
+    const { connections, fetchedAt } = await readConnections(origin, row, refresh)
     return { status: 'ok', origin, fetchedAt, total: connections.length, connections }
   }
 
   const quotaRoute = async (refresh: boolean): Promise<unknown> => {
-    const { apiKeyEnv } = live()
+    const row = live()
     const origin = liveOrigin()
-    const api = await apiFor()
-    if (api === undefined) throw new OmniRouteError(`no OmniRoute API key is configured (${apiKeyEnv})`)
-    const { connections, windows, fetchedAt } = await readConnections(api, refresh)
+    const { connections, windows, fetchedAt } = await readConnections(origin, row, refresh)
     return {
       status: 'ok',
       origin,

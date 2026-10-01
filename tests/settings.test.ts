@@ -124,6 +124,52 @@ test('a live origin edit is used by the next request', async () => {
   }
 })
 
+test('a settings write during credential lookup cannot mix origins, keys or cached readings', async () => {
+  const state = { baseURL: 'http://old.example:20128', apiKeyEnv: 'OLD_KEY' }
+  let release: ((key: { value: string }) => void) | undefined
+  const refs: string[] = []
+  const routes = mount({ credentials: { resolve: async (ref) => {
+    refs.push(ref)
+    if (ref === 'OLD_KEY') return new Promise((resolve) => { release = resolve })
+    return { value: 'new-key' }
+  } } }, {
+    baseURL: ref(() => state.baseURL), apiKeyEnv: ref(() => state.apiKeyEnv),
+    cacheSeconds: ref(() => 3600), timeoutMs: ref(() => 10_000),
+    syncNamespace: ref(() => 'llm-pi-ai'), syncProvider: ref(() => 'omniroute'),
+  })
+  const seen: { url: string; key: string | null }[] = []
+  const original = globalThis.fetch
+  globalThis.fetch = (async (url, init) => {
+    seen.push({ url: String(url), key: new Headers(init?.headers).get('authorization') })
+    return Response.json({ models: [{ id: String(url), available: true }] })
+  }) as typeof fetch
+  try {
+    const route = routes.get(ROUTE_MODELS)
+    assert.ok(route)
+    const older = request(route, ROUTE_MODELS)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.ok(release)
+    state.baseURL = 'http://new.example:20129'
+    state.apiKeyEnv = 'NEW_KEY'
+    routes.emitVolatile()
+    const fresh = await request(route, ROUTE_MODELS)
+    release({ value: 'old-key' })
+    const old = await older
+    assert.equal(old.status, 200)
+    assert.deepEqual(seen, [
+      { url: 'http://new.example:20129/api/models', key: 'Bearer new-key' },
+      { url: 'http://old.example:20128/api/models', key: 'Bearer old-key' },
+    ])
+    assert.deepEqual(old.body && (old.body as { origin: string }).origin, 'http://old.example:20128')
+    assert.deepEqual((await request(route, ROUTE_MODELS)).body, fresh.body)
+    assert.equal(seen.length, 2, 'the fresh reading remains cached')
+    assert.deepEqual(refs, ['OLD_KEY', 'NEW_KEY'])
+  } finally {
+    release?.({ value: 'old-key' })
+    globalThis.fetch = original
+  }
+})
+
 test('a read in flight during a settings write must not re-fill the cache', async () => {
   const state = { baseURL: 'http://localhost:20128' }
   const routes = mount(SERVICES, {
