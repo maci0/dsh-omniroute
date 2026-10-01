@@ -173,8 +173,10 @@ The write is a merge, so fields the row already carries — `apiKeyEnv`, `baseUR
   share one in-flight read, so a refresh loop cannot multiply requests to the
   router.
 - **The key stays in this process.** Routes answer formatted JSON only: no key,
-  no Authorization header, and a refusal is shortened to one line rather than
-  passed through as the router's own body.
+  no Authorization header. A refusal is this plugin's own one-line message
+  (HTTP status, timeout, unreachable, non-JSON body), never the router's body;
+  a failure inside another service (credentials, settings) is logged on the
+  host and answered generically.
 
 ## Development
 

@@ -26,6 +26,13 @@
  *
  * @module dsh-omniroute/omniroute
  */
+/**
+ * A failure this plugin phrased itself. Only its message reaches a route
+ * reply; any other error is logged on the host and answered generically.
+ */
+export declare class OmniRouteError extends Error {
+    readonly name = "OmniRouteError";
+}
 /** One model OmniRoute advertises. */
 export interface OmniRouteModel {
     /** Id a request names: the `fullModel` when the listing has one. */

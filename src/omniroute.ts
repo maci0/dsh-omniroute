@@ -29,6 +29,14 @@
 
 import { numberOf, record, stringOf } from './util.ts'
 
+/**
+ * A failure this plugin phrased itself. Only its message reaches a route
+ * reply; any other error is logged on the host and answered generically.
+ */
+export class OmniRouteError extends Error {
+  override readonly name = 'OmniRouteError'
+}
+
 /** One model OmniRoute advertises. */
 export interface OmniRouteModel {
   /** Id a request names: the `fullModel` when the listing has one. */
@@ -229,12 +237,21 @@ export function createOmniRouteApi(options: OmniRouteApiOptions): OmniRouteApi {
   const headers = { authorization: `Bearer ${options.key}`, accept: 'application/json' }
 
   const get = async (path: string): Promise<unknown> => {
-    const response = await transport(`${options.origin}${path}`, {
-      headers,
-      signal: AbortSignal.timeout(options.timeoutMs),
-    })
+    let response: Response
+    try {
+      response = await transport(`${options.origin}${path}`, {
+        headers,
+        signal: AbortSignal.timeout(options.timeoutMs),
+      })
+    } catch (error) {
+      // `AbortSignal.timeout` rejects with a `TimeoutError`; anything else is
+      // a connection that never produced a response.
+      throw new OmniRouteError(error instanceof Error && error.name === 'TimeoutError'
+        ? `OmniRoute did not answer ${path} within ${String(options.timeoutMs)}ms`
+        : `OmniRoute could not be reached for ${path}`)
+    }
     if (!response.ok) {
-      throw new Error(`OmniRoute answered HTTP ${String(response.status)} for ${path}`)
+      throw new OmniRouteError(`OmniRoute answered HTTP ${String(response.status)} for ${path}`)
     }
     // A body that is not JSON is reported as that and nothing more: the parse
     // error a JSON reader raises quotes the first bytes of whatever the router
@@ -242,7 +259,7 @@ export function createOmniRouteApi(options: OmniRouteApiOptions): OmniRouteApi {
     try {
       return await response.json()
     } catch {
-      throw new Error(`OmniRoute answered a non-JSON body for ${path}`)
+      throw new OmniRouteError(`OmniRoute answered a non-JSON body for ${path}`)
     }
   }
 
