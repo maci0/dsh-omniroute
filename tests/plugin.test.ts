@@ -168,8 +168,8 @@ test('no credential is an error that names the reference and asks nobody', async
 test('a non-JSON router body is reported without quoting it back', async () => {
   const routes = mount(KEYED, { cacheSeconds: 0 })
   const original = globalThis.fetch
-  // A router that answers 200 with something other than JSON — a login page,
-  // a proxy error — makes `response.json()` fail with a syntax error whose
+  // A router that answers 200 with something other than JSON (a login page,
+  // a proxy error) makes `response.json()` fail with a syntax error whose
   // message quotes the first bytes of that body.
   globalThis.fetch = (() => Promise.resolve(new Response('UPSTREAM-SECRET-value', {
     status: 200,

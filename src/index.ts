@@ -1,18 +1,18 @@
 /**
- * dsh-omniroute — OmniRoute's own API surface, inside DeepSeek Harness.
+ * dsh-omniroute: OmniRoute's own API surface, inside DeepSeek Harness.
  *
  * Three read-only routes, all behind the composition's trust fence and all
  * serving JSON:
  *
- * - `GET /omniroute/models` — the live model catalog from OmniRoute's
+ * - `GET /omniroute/models`: the live model catalog from OmniRoute's
  *   `GET /api/models`: which models exist, which ones the router can serve
  *   right now, and which take images. `?available=1`, `?q=<text>` and
  *   `?provider=<key>` narrow it. `?sync=1` also writes the available models
  *   into a configured provider route, which is how the model picker learns
  *   them.
- * - `GET /omniroute/connections` — the upstream connections from
+ * - `GET /omniroute/connections`: the upstream connections from
  *   `GET /api/providers`.
- * - `GET /omniroute/quota` — the plan and windows of every connection that
+ * - `GET /omniroute/quota`: the plan and windows of every connection that
  *   publishes one, from `GET /api/usage/<connectionId>`.
  *
  * The API key stays in this process: the browser or the model only ever reads
@@ -82,8 +82,8 @@ export const DEFAULT_SYNC_PROVIDER = 'omniroute'
 /**
  * Configuration this plugin's row resolves to, as `apply` receives it.
  *
- * Every field is `volatile()` — the settings document accepts writes only under
- * a volatile node, and the Plugins page's OmniRoute card edits exactly these —
+ * Every field is `volatile()` (the settings document accepts writes only under
+ * a volatile node, and the Plugins page's OmniRoute card edits exactly these),
  * so the loader hands live references and each is read per request. `baseURL`
  * and `apiKeyEnv` decide where the plugin talks and as whom; the two sync
  * fields name the row `?sync=1` writes a model catalog into.
@@ -153,7 +153,7 @@ function readLive<T>(value: T | Volatile<T> | undefined): T | undefined {
 }
 
 /**
- * Turn a row — live references or plain values — into validated plain options.
+ * Turn a row (live references or plain values) into validated plain options.
  * @param row - the configured row.
  * @returns the resolved options, defaults filled by the schema.
  */
@@ -460,7 +460,7 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
     generation += 1
     const { apiKeyEnv, timeoutMs, cacheSeconds, syncNamespace, syncProvider } = live()
     ctx.logger.warn(
-      `omniroute: configuration updated — ${liveOrigin()} as ${apiKeyEnv},`
+      `omniroute: configuration updated: ${liveOrigin()} as ${apiKeyEnv},`
         + ` ${timeoutMs}ms deadline, ${cacheSeconds}s cache, sync into ${syncNamespace}.providers.${syncProvider}`,
     )
   })

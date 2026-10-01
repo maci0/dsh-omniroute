@@ -2,8 +2,8 @@
  * Deterministic work counters for the webserver route path.
  *
  * Wall clock is not asserted: it moves with turbo, neighbours, and the
- * container's CPU quota. These cases count work instead — provider requests
- * and per-request parsing — which is what the route path is allowed to spend:
+ * container's CPU quota. These cases count work instead (provider requests
+ * and per-request parsing), which is what the route path is allowed to spend:
  *
  * - a cold `/omniroute/quota` read asks `/api/providers` once, not once for the
  *   route's own connection list and again inside the quota read;
