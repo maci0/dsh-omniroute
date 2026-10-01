@@ -248,3 +248,19 @@ test('a router that does not answer in time is reported as that', async () => {
     globalThis.fetch = original
   }
 })
+
+test('a cached reading reports when OmniRoute was asked, not when it was served', async () => {
+  const routes = mount(KEYED, { cacheSeconds: 60 })
+  const stub = stubFetch({ '/api/models': CATALOG, '/api/providers': { connections: [] } })
+  try {
+    for (const path of [ROUTE_MODELS, ROUTE_CONNECTIONS, ROUTE_QUOTA]) {
+      const first = await request(routes.get(path) as WebRouteLike, path)
+      await new Promise((resolve) => { setTimeout(resolve, 5) })
+      const cached = await request(routes.get(path) as WebRouteLike, path)
+      assert.equal((cached.body as { fetchedAt: number }).fetchedAt, (first.body as { fetchedAt: number }).fetchedAt, path)
+    }
+    assert.equal(stub.calls.length, 2, 'one catalog read and one shared connection read')
+  } finally {
+    stub.restore()
+  }
+})
