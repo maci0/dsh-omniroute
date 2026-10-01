@@ -203,17 +203,19 @@ The write is a merge, so fields the row already carries (`apiKeyEnv`, `baseURL`,
 
 ## Development
 
+dsh loads plugins on Node `^22.19.0 || >=24.0.0`; development and tests run on bun.
+
 ```sh
-npm install          # first run only (typescript, @types/node, cordis, carrier, schemastery)
-npm run typecheck
-npm test             # parsers, the client, both route halves, and a real-composition boot
-npm run build        # tsc -> lib/*.js
+bun install          # first run only (typescript, @types/node, cordis, carrier, schemastery)
+bun run typecheck
+bun test             # parsers, the client, both route halves, and a real-composition boot
+bun run build        # tsc -> lib/*.js
 ```
 
 For local development, `dsh plugin --profile <name> add <path-to-checkout>`
-(after `npm run build`), then restart `dsh web`.
+(after `bun run build`), then restart `dsh web`.
 
-`npm test` includes the real-composition case: the plugin mounts into a real
+`bun test` includes the real-composition case: the plugin mounts into a real
 Cordis `Context` beside the real HTTP carrier on an OS-assigned port, a route is
 driven over real HTTP with the settings write observed, disposing the fiber
 must withdraw every route, and no route exists until the trust fence is mounted.
