@@ -27,6 +27,7 @@ import Schema from '@deepseek-ai/schemastery'
 import {
   createOmniRouteApi,
   OmniRouteError,
+  BASE_URL_PATTERN,
   originOf,
   type OmniRouteApi,
   type OmniRouteConnection,
@@ -127,7 +128,7 @@ const ValueSchema = Schema.object({
  * Plugins page, so every one is volatile.
  */
 export const Config = Schema.object({
-  baseURL: Schema.string().default(DEFAULT_BASE_URL).volatile(),
+  baseURL: Schema.string().pattern(BASE_URL_PATTERN).default(DEFAULT_BASE_URL).volatile(),
   apiKeyEnv: Schema.string().default(DEFAULT_API_KEY_ENV).volatile(),
   timeoutMs: Schema.number().min(1).max(60_000).default(DEFAULT_TIMEOUT_MS).volatile(),
   cacheSeconds: Schema.number().min(0).max(3_600).default(DEFAULT_CACHE_SECONDS).volatile(),
@@ -250,7 +251,6 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
   // Read the row at every use: each field is volatile, so a save from the
   // Plugins card has to reach the next request, not a mount-time copy.
   const live = (): Required<Options> => resolveRow(row)
-  live()
   /**
    * The origin the live `baseURL` names, derived once per distinct value.
    *
@@ -263,10 +263,25 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
   const liveOrigin = (): string => {
     const { baseURL } = live()
     if (baseURL !== originKey) {
+      // Remembered only once it parsed, so a malformed value fails every read.
+      originValue = originOf(baseURL)
       originKey = baseURL
-      originValue = originOf(baseURL, DEFAULT_BASE_URL)
     }
     return originValue
+  }
+  // A row passed by a direct caller skipped the loader's schema: validate it
+  // at mount, so a malformed baseURL fails here rather than on the first poll.
+  liveOrigin()
+  /**
+   * The live origin for a reply that reports a failure, or nothing while the
+   * baseURL is malformed: that malformation is then the failure reported.
+   */
+  const knownOrigin = (): { origin?: string } => {
+    try {
+      return { origin: liveOrigin() }
+    } catch {
+      return {}
+    }
   }
   const cache = new Map<string, { at: number; value: unknown }>()
   const inflight = new Map<string, Promise<unknown>>()
@@ -433,7 +448,7 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
           ctx.logger.warn(`omniroute: GET ${path} failed (${String(error)})`)
           message = 'the read failed; the host log names the cause'
         }
-        sendJson(res, 502, { status: 'error', message, origin: liveOrigin() })
+        sendJson(res, 502, { status: 'error', message, ...knownOrigin() })
       }
     }
 
@@ -460,7 +475,7 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
     generation += 1
     const { apiKeyEnv, timeoutMs, cacheSeconds, syncNamespace, syncProvider } = live()
     ctx.logger.warn(
-      `omniroute: configuration updated: ${liveOrigin()} as ${apiKeyEnv},`
+      `omniroute: configuration updated: ${knownOrigin().origin ?? 'an invalid baseURL'} as ${apiKeyEnv},`
         + ` ${timeoutMs}ms deadline, ${cacheSeconds}s cache, sync into ${syncNamespace}.providers.${syncProvider}`,
     )
   })

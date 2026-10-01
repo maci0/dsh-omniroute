@@ -214,17 +214,22 @@ export function parseUsage(payload: unknown, connection: OmniRouteConnection): r
   return windows
 }
 
-/** Origin of a configured base URL, which is what carries OmniRoute's own API. */
-export function originOf(baseURL: string | undefined, fallback: string): string {
-  if (baseURL === undefined || baseURL === '') return fallback
-  try {
-    // A scheme-less host parses as a valid URL whose origin is the string
-    // "null", which is no origin at all: the fallback is the honest answer.
-    const origin = new URL(baseURL).origin
-    return origin === 'null' ? fallback : origin
-  } catch {
-    return fallback
-  }
+/**
+ * What a configured base URL must start with: an http(s) scheme and a host.
+ * A scheme-less `box:20128` parses as a URL whose origin is the string "null".
+ */
+export const BASE_URL_PATTERN = /^https?:\/\/[^\s/?#]+/iu
+
+/**
+ * Origin of a configured base URL, which is what carries OmniRoute's own API.
+ * @param baseURL - the configured value, with or without its `/v1` path.
+ * @returns the origin.
+ * @throws OmniRouteError when the value is not an absolute http(s) URL: no
+ * other origin is guessed, so the key never goes to a host nobody configured.
+ */
+export function originOf(baseURL: string): string {
+  if (BASE_URL_PATTERN.test(baseURL) && URL.canParse(baseURL)) return new URL(baseURL).origin
+  throw new OmniRouteError('baseURL is not an absolute http(s) URL; fix the omniroute row')
 }
 
 /**

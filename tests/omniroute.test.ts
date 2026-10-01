@@ -190,12 +190,12 @@ test('a connection id that is a dot segment never climbs out of the usage path',
 })
 
 test('a configured base URL contributes its origin, not its /v1 path', () => {
-  assert.equal(originOf('http://192.168.0.100:20128/v1', 'http://localhost:20128'), 'http://192.168.0.100:20128')
-  assert.equal(originOf('not a url', 'http://localhost:20128'), 'http://localhost:20128')
-  assert.equal(originOf('http://localhost:20128', 'http://fallback:1'), 'http://localhost:20128')
+  assert.equal(originOf('http://192.168.0.100:20128/v1'), 'http://192.168.0.100:20128')
+  assert.equal(originOf('https://box.example'), 'https://box.example')
   // A scheme-less host parses as a valid URL whose origin is the string
-  // "null", which would be used as a request origin instead of the fallback.
-  assert.equal(originOf('192.168.0.100:20128', 'http://localhost:20128'), 'http://localhost:20128')
-  assert.equal(originOf('localhost:20128', 'http://localhost:20128'), 'http://localhost:20128')
-  assert.equal(originOf(undefined, 'http://localhost:20128'), 'http://localhost:20128')
+  // "null". No other origin is guessed in its place: a misconfigured row is
+  // an error, not a request to a host nobody configured.
+  for (const malformed of ['not a url', '192.168.0.100:20128', 'localhost:20128', 'ftp://box', '']) {
+    assert.throws(() => originOf(malformed), /baseURL is not an absolute http\(s\) URL/, malformed)
+  }
 })

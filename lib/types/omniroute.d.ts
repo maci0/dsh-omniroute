@@ -138,8 +138,19 @@ export declare function parseConnections(payload: unknown): readonly OmniRouteCo
  * @returns one entry per window the body carried.
  */
 export declare function parseUsage(payload: unknown, connection: OmniRouteConnection): readonly OmniRouteQuota[];
-/** Origin of a configured base URL, which is what carries OmniRoute's own API. */
-export declare function originOf(baseURL: string | undefined, fallback: string): string;
+/**
+ * What a configured base URL must start with: an http(s) scheme and a host.
+ * A scheme-less `box:20128` parses as a URL whose origin is the string "null".
+ */
+export declare const BASE_URL_PATTERN: RegExp;
+/**
+ * Origin of a configured base URL, which is what carries OmniRoute's own API.
+ * @param baseURL - the configured value, with or without its `/v1` path.
+ * @returns the origin.
+ * @throws OmniRouteError when the value is not an absolute http(s) URL: no
+ * other origin is guessed, so the key never goes to a host nobody configured.
+ */
+export declare function originOf(baseURL: string): string;
 /**
  * Build the client for one deployment.
  * @param options - origin, credential, deadline, and transport.

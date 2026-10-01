@@ -301,3 +301,38 @@ test('a row outside the schema bounds still fails at the boundary', () => {
   assert.throws(() => OmniRoute.Config({ timeoutMs: 0 }), /timeoutMs/)
   assert.throws(() => OmniRoute.resolveRow({ cacheSeconds: -1 }), /cacheSeconds/)
 })
+
+test('a base URL without an http(s) scheme fails at load, never falling back', () => {
+  // `box:20128` parses as a URL whose origin is "null"; a silent fallback to
+  // the default origin would send the key to a host nobody configured.
+  for (const baseURL of ['192.168.0.100:20128', 'box:20128', 'not a url', 'ftp://box:20128']) {
+    assert.throws(() => OmniRoute.Config({ baseURL }), /baseURL/, baseURL)
+    assert.throws(() => mount(SERVICES, { baseURL }), /baseURL/, baseURL)
+  }
+})
+
+test('a live base URL that turns malformed is a configuration error, and nothing is asked', async () => {
+  const state = { baseURL: 'http://a.example:20128' }
+  const routes = mount(SERVICES, {
+    baseURL: ref(() => state.baseURL),
+    apiKeyEnv: ref(() => 'OMNIROUTE_API_KEY'),
+    timeoutMs: ref(() => 10_000),
+    cacheSeconds: ref(() => 0),
+    syncNamespace: ref(() => 'llm-pi-ai'),
+    syncProvider: ref(() => 'omniroute'),
+  })
+  const seen: string[] = []
+  const restore = stubFetch(catalog(), seen)
+  try {
+    state.baseURL = 'box:20128'
+    routes.emitVolatile()
+    const route = routes.get(ROUTE_MODELS)
+    assert.ok(route)
+    const reply = await request(route, ROUTE_MODELS)
+    assert.equal(reply.status, 502)
+    assert.match(String((reply.body as { message: string }).message), /baseURL is not an absolute http\(s\) URL/)
+    assert.deepEqual(seen, [], 'no request, so the key went nowhere')
+  } finally {
+    restore()
+  }
+})
