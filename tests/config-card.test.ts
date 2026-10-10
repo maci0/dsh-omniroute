@@ -191,7 +191,7 @@ test('apply binds the namespace and registers the row card', () => {
   assert.equal(typeof client.locale.dictionaries.en.labelBaseURL, 'string')
   assert.equal(typeof client.locale.dictionaries.zh.labelBaseURL, 'string')
   assert.equal(client.injected, 'plugins.row.config')
-  assert.equal(client.slot.key, 'dsh-omniroute#omniroute')
+  assert.equal(client.slot.key, '@maci0/dsh-omniroute#omniroute')
   assert.equal(client.slot.locale, 'omniroute')
 })
 
