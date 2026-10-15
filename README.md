@@ -27,7 +27,7 @@ OmniRoute API key never leaving the host process.
 > would win).
 
 ```sh
-dsh plugin --profile web add github:maci0/dsh-omniroute#v0.8.3
+dsh plugin --profile web add github:maci0/dsh-omniroute#v0.8.4
 ```
 
 Pin a release tag: a bare `github:` spec floats on `main`. To upgrade, run the
