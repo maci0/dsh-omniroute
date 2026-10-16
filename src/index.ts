@@ -226,6 +226,7 @@ async function syncModels(
   provider: string,
   models: readonly OmniRouteModel[],
 ): Promise<number> {
+  if (models.length === 0) throw new OmniRouteError('no available models matched; the saved model list was not changed')
   const settings = ctx.get('settings') as SettingsLike | undefined
   if (settings === undefined) throw new OmniRouteError('the settings service is not mounted, so nothing can be written')
   const entries = models.map(model => {

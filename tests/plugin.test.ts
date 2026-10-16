@@ -6,7 +6,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
+import { mock, test } from 'node:test'
 import { ROUTE_CONNECTIONS, ROUTE_MODELS, ROUTE_QUOTA } from '../src/index.ts'
 import type { WebRouteLike } from '../src/host.ts'
 import { mount, request, stubFetch, type Services } from './harness.ts'
@@ -67,6 +67,22 @@ test('sync writes the available models into the configured provider route', asyn
     assert.deepEqual(writes, [
       { ns: 'llm-pi-ai', patch: { providers: { omniroute: { models: [{ id: 'glm/glm-5.3', name: 'GLM 5.3' }] } } } },
     ])
+  } finally {
+    stub.restore()
+  }
+})
+
+test('an empty sync match cannot erase the saved model catalog', async () => {
+  const writes: object[] = []
+  const routes = mount({ ...KEYED, settings: { update: async (_ns, patch) => { writes.push(patch) } } })
+  const stub = stubFetch({ '/api/models': CATALOG })
+  try {
+    for (const query of ['q=missing', 'provider=missing', 'provider=cc']) {
+      const reply = await request(routes.get(ROUTE_MODELS) as WebRouteLike, `${ROUTE_MODELS}?sync=1&${query}`)
+      assert.equal(reply.status, 502)
+      assert.match(String((reply.body as { message: string }).message), /no available models matched/)
+    }
+    assert.deepEqual(writes, [])
   } finally {
     stub.restore()
   }
@@ -256,17 +272,20 @@ test('a router that does not answer in time is reported as that', async () => {
 })
 
 test('a cached reading reports when OmniRoute was asked, not when it was served', async () => {
+  let now = 100_000
+  const clock = mock.method(Date, 'now', () => now)
   const routes = mount(KEYED, { cacheSeconds: 60 })
   const stub = stubFetch({ '/api/models': CATALOG, '/api/providers': { connections: [] } })
   try {
     for (const path of [ROUTE_MODELS, ROUTE_CONNECTIONS, ROUTE_QUOTA]) {
       const first = await request(routes.get(path) as WebRouteLike, path)
-      await new Promise((resolve) => { setTimeout(resolve, 5) })
+      now += 5
       const cached = await request(routes.get(path) as WebRouteLike, path)
       assert.equal((cached.body as { fetchedAt: number }).fetchedAt, (first.body as { fetchedAt: number }).fetchedAt, path)
     }
     assert.equal(stub.calls.length, 2, 'one catalog read and one shared connection read')
   } finally {
     stub.restore()
+    clock.mock.restore()
   }
 })

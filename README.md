@@ -27,12 +27,11 @@ OmniRoute API key never leaving the host process.
 > would win).
 
 ```sh
-dsh plugin --profile web add github:maci0/dsh-omniroute#v0.8.4
+dsh plugin --profile web add --save-exact @maci0/dsh-omniroute@0.9.0
 ```
 
-Pin a release tag: a bare `github:` spec floats on `main`. To upgrade, run the
-same command with the newer tag, then restart `dsh web` (bundle layers compose
-at boot).
+Pin an exact npm version. To upgrade, run the same command with the newer
+version, then restart `dsh web` (bundle layers compose at boot).
 
 Do **not** also paste the `id: omniroute` row from `cordis.patch.yml` into the
 profile's own patch: `insert` does not dedupe ids.
@@ -151,6 +150,7 @@ wrote:
 
 The write is a merge, so fields the row already carries (`apiKeyEnv`, `baseURL`,
 `compat`) survive; only `models` is replaced.
+If no available models match, sync returns an error and preserves the saved list.
 
 ## How it works
 
