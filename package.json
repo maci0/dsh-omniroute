@@ -1,6 +1,6 @@
 {
   "name": "@maci0/dsh-omniroute",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
@@ -58,11 +58,11 @@
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
-    "dsh": ">=0.2.1-rc.2 <0.3.0"
+    "dsh": ">=0.2.2-alpha.2 <0.3.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5",
-    "@deepseek-ai/dsh-host-webserver": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-host-webserver": "0.2.2-alpha.2",
     "@types/node": "^22.20.2",
     "typescript": "^7.0.2"
   },
