@@ -202,6 +202,16 @@ test('a non-JSON router body is reported without quoting it back', async () => {
   }
 })
 
+test('without the connection fence every route leaves admission to the web server', async () => {
+  const routes = mount({ ...KEYED, connection: {} })
+  const wrongMethod = await request(routes.get(ROUTE_MODELS) as WebRouteLike, ROUTE_MODELS, 'POST')
+  assert.equal(wrongMethod.status, 405)
+  for (const path of [ROUTE_MODELS, ROUTE_CONNECTIONS, ROUTE_QUOTA]) {
+    const route = routes.get(path) as WebRouteLike & { auth?: unknown }
+    assert.equal(route.auth ?? 'required', 'required', `${path} must not opt out of web server authentication`)
+  }
+})
+
 test('the trust fence, the method, and a failed read are all answered in JSON', async () => {
   const routes = mount({
     ...KEYED,

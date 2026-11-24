@@ -21,7 +21,7 @@ export interface Captured {
 export interface Services {
   settings?: { update(ns: string, patch: object): Promise<void> }
   credentials?: { resolve(ref: string): Promise<{ value: string } | undefined> }
-  connection?: { requestRejection(request: { headers: object | undefined }): 401 | 403 | undefined }
+  connection?: { requestRejection?(request: { headers: object | undefined }): 401 | 403 | undefined }
 }
 
 /** Mount the plugin over a fake context and return its routes by path. */

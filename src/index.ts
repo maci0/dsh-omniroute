@@ -419,7 +419,7 @@ export function apply(ctx: HostContext, row: Config | Options = {}): void {
   /** One shared GET wrapper around every route handler. */
   const handlerFor = (path: string, run: (params: URLSearchParams, refresh: boolean) => Promise<unknown>) =>
     async (req: RequestLike, res: ResponseLike): Promise<void> => {
-      const rejection = ctx.connection.requestRejection(req)
+      const rejection = ctx.connection.requestRejection?.(req)
       if (rejection !== undefined) {
         res.statusCode = rejection
         res.end()
